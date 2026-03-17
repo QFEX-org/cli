@@ -28,6 +28,25 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - name: qfex
+    repository:
+      owner: QFEX-org
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "feat: update qfex to {{ .Tag }}"
+    directory: Formula
+    homepage: "https://github.com/QFEX-org/cli"
+    description: "CLI for the QFEX perpetual futures exchange"
+    license: "MIT"
+    install: |
+      bin.install "qfex"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/qfex version")
+
 changelog:
   sort: asc
   filters:
