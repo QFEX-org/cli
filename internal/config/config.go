@@ -12,23 +12,38 @@ type Config struct {
 	PublicKey string `yaml:"public_key"`
 	SecretKey string `yaml:"secret_key"`
 
-	// Optional overrides
+	// Env selects the target environment: "prod" (default) or "uat".
+	// UAT is identical to prod but uses qfex.io instead of qfex.com.
+	Env string `yaml:"env,omitempty"`
+
+	// Optional per-URL overrides (take precedence over Env).
 	TradeWSURL string `yaml:"trade_ws_url,omitempty"`
 	MDSURL     string `yaml:"mds_url,omitempty"`
+}
+
+func (c *Config) domain() string {
+	if c.Env == "uat" {
+		return "qfex.io"
+	}
+	return "qfex.com"
 }
 
 func (c *Config) TradeWS() string {
 	if c.TradeWSURL != "" {
 		return c.TradeWSURL
 	}
-	return "wss://trade.qfex.com/"
+	return "wss://trade." + c.domain() + "/"
 }
 
 func (c *Config) MDS() string {
 	if c.MDSURL != "" {
 		return c.MDSURL
 	}
-	return "wss://mds.qfex.com/"
+	return "wss://mds." + c.domain() + "/"
+}
+
+func (c *Config) IsUAT() bool {
+	return c.Env == "uat"
 }
 
 func (c *Config) HasCredentials() bool {

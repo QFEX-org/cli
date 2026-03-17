@@ -65,15 +65,48 @@ The daemon maintains persistent WebSocket connections and caches state. The CLI 
 ```yaml
 public_key: qfex_pub_xxxxx   # Required for trading
 secret_key: your_secret_key  # Required for trading
+env: prod                    # "prod" (default) or "uat"
 ```
 
 Market data commands work without credentials. Trading commands (orders, positions, balance) require credentials.
+
+### Environments
+
+| `env` | Trade WebSocket | MDS WebSocket |
+|-------|----------------|---------------|
+| `prod` (default) | `wss://trade.qfex.com/` | `wss://mds.qfex.com/` |
+| `uat` | `wss://trade.qfex.io/` | `wss://mds.qfex.io/` |
+
+UAT is identical to production in behaviour and API shape, but uses a separate exchange instance at `qfex.io`. Use it for testing order placement without risking real funds.
+
+To switch environments, change `env` in the config file and restart the daemon:
+
+```sh
+# Switch to UAT
+echo "env: uat" >> ~/.config/qfex/config.yaml
+qfex daemon restart
+
+# Confirm which environment is active
+qfex daemon status
+# "env": "uat", "trade_url": "wss://trade.qfex.io/"
+
+# Switch back to prod
+sed -i '' 's/env: uat/env: prod/' ~/.config/qfex/config.yaml
+qfex daemon restart
+```
+
+You can also override the URLs directly if you need a custom endpoint (takes precedence over `env`):
+
+```yaml
+trade_ws_url: wss://trade.qfex.io/
+mds_url: wss://mds.qfex.io/
+```
 
 **Paths used:**
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/qfex/config.yaml` | API credentials |
+| `~/.config/qfex/config.yaml` | API credentials and environment |
 | `~/.local/share/qfex/daemon.sock` | IPC socket |
 | `~/.local/share/qfex/daemon.pid` | Daemon PID |
 | `~/.local/share/qfex/daemon.log` | Daemon logs |
@@ -95,7 +128,14 @@ qfex daemon restart   # Stop then start
 
 **Status output:**
 ```json
-{"mds_connected": true, "running": true, "trade_authed": true}
+{
+  "running": true,
+  "env": "prod",
+  "mds_url": "wss://mds.qfex.com/",
+  "trade_url": "wss://trade.qfex.com/",
+  "mds_connected": true,
+  "trade_authed": true
+}
 ```
 
 ---

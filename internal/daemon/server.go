@@ -331,10 +331,17 @@ func (s *Server) dispatch(ctx context.Context, req *protocol.Request) protocol.R
 // ---- Handlers ----
 
 func (s *Server) handleStatus() protocol.Response {
+	env := "prod"
+	if s.d.cfg.IsUAT() {
+		env = "uat"
+	}
 	return okResp(mustMarshal(map[string]any{
-		"running":        true,
-		"mds_connected":  s.d.mds.conn != nil,
-		"trade_authed":   s.d.trade.IsAuthed(),
+		"running":       true,
+		"env":           env,
+		"mds_url":       s.d.cfg.MDS(),
+		"trade_url":     s.d.cfg.TradeWS(),
+		"mds_connected": s.d.mds.conn != nil,
+		"trade_authed":  s.d.trade.IsAuthed(),
 	}))
 }
 
