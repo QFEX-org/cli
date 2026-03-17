@@ -1,0 +1,7 @@
+# Build output
+qfex
+dist/
+
+# Go
+*.test
+*.out
