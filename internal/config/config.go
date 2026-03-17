@@ -42,6 +42,10 @@ func (c *Config) MDS() string {
 	return "wss://mds." + c.domain() + "/"
 }
 
+func (c *Config) BankerURL() string {
+	return "https://banker." + c.domain() + "/address"
+}
+
 func (c *Config) IsUAT() bool {
 	return c.Env == "uat"
 }

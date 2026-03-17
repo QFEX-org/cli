@@ -78,6 +78,19 @@ var getAvailableLeverageCmd = &cobra.Command{
 	},
 }
 
+var depositCmd = &cobra.Command{
+	Use:   "deposit",
+	Short: "Get the USDC deposit address",
+	Long: `Fetch the wallet address to deposit USDC (Arbitrum) into your QFEX account.
+
+Also returns available_allowance — the remaining deposit capacity on your account.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		requireDaemon()
+		requireAuth()
+		sendAndPrint(protocol.CmdGetDepositAddress, nil)
+	},
+}
+
 var cancelOnDisconnectCmd = &cobra.Command{
 	Use:   "cod",
 	Short: "Enable or disable cancel-on-disconnect",
@@ -94,6 +107,7 @@ var cancelOnDisconnectCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(accountCmd)
 	accountCmd.AddCommand(balanceCmd)
+	accountCmd.AddCommand(depositCmd)
 	accountCmd.AddCommand(leverageCmd)
 	accountCmd.AddCommand(cancelOnDisconnectCmd)
 

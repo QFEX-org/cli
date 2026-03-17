@@ -45,6 +45,9 @@ const (
 	// Streaming
 	CmdWatch = "watch"
 
+	// Funding
+	CmdGetDepositAddress = "get_deposit_address"
+
 	// Control
 	CmdPing               = "ping"
 	CmdStatus             = "status"
