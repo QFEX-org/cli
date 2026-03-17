@@ -23,22 +23,10 @@ var rootCmd = &cobra.Command{
 	Short: "QFEX trading CLI",
 	Long: `qfex is a CLI for interacting with the QFEX perpetual futures exchange.
 
-It communicates with a background daemon that maintains WebSocket connections
-to the QFEX Market Data Service and Trading API.
+Commands that require live market data or trading (order, watch, account balance, etc.)
+communicate with a background daemon. Run 'qfex daemon start' first for those.
 
-Run 'qfex daemon start' to start the daemon before using other commands.`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Skip daemon check for daemon commands and config
-		if cmd.Name() == "start" || cmd.Name() == "stop" ||
-			cmd.Name() == "status" || cmd.Name() == "run" ||
-			cmd.Name() == "config" || cmd.Name() == "qfex" {
-			return nil
-		}
-		if !cli.IsRunning() {
-			return fmt.Errorf("qfex daemon is not running\nRun 'qfex daemon start' to start it")
-		}
-		return nil
-	},
+REST-based commands (market refdata, market metrics, history, etc.) work without the daemon.`,
 }
 
 func Execute() {

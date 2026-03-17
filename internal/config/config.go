@@ -46,6 +46,10 @@ func (c *Config) BankerURL() string {
 	return "https://banker." + c.domain() + "/address"
 }
 
+func (c *Config) APIURL() string {
+	return "https://api." + c.domain()
+}
+
 func (c *Config) IsUAT() bool {
 	return c.Env == "uat"
 }

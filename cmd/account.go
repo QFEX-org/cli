@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -91,6 +93,43 @@ Also returns available_allowance — the remaining deposit capacity on your acco
 	},
 }
 
+var feesCmd = &cobra.Command{
+	Use:   "fees",
+	Short: "Get your fee tiers",
+	Run: func(cmd *cobra.Command, args []string) {
+		printResult(apiGet("/user/fees", nil, true))
+	},
+}
+
+var (
+	pnlSymbol     string
+	pnlStart      string
+	pnlEnd        string
+	pnlLimitHours int64
+)
+
+var pnlCmd = &cobra.Command{
+	Use:   "pnl",
+	Short: "Get hourly PnL approximations",
+	Long:  `Get hourly PnL data. Maximum 2160 hours (90 days).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		params := url.Values{}
+		if pnlSymbol != "" {
+			params.Set("symbol", pnlSymbol)
+		}
+		if pnlStart != "" {
+			params.Set("start", pnlStart)
+		}
+		if pnlEnd != "" {
+			params.Set("end", pnlEnd)
+		}
+		if pnlLimitHours > 0 {
+			params.Set("limit_hours", strconv.FormatInt(pnlLimitHours, 10))
+		}
+		printResult(apiGet("/pnl", params, true))
+	},
+}
+
 var cancelOnDisconnectCmd = &cobra.Command{
 	Use:   "cod",
 	Short: "Enable or disable cancel-on-disconnect",
@@ -110,6 +149,8 @@ func init() {
 	accountCmd.AddCommand(depositCmd)
 	accountCmd.AddCommand(leverageCmd)
 	accountCmd.AddCommand(cancelOnDisconnectCmd)
+	accountCmd.AddCommand(feesCmd)
+	accountCmd.AddCommand(pnlCmd)
 
 	leverageCmd.AddCommand(getLeverageCmd)
 	leverageCmd.AddCommand(setLeverageCmd)
@@ -125,4 +166,9 @@ func init() {
 	getAvailableLeverageCmd.Flags().IntVar(&levOffset, "offset", 0, "Pagination offset")
 
 	cancelOnDisconnectCmd.Flags().Bool("enable", true, "Enable cancel-on-disconnect (use --enable=false to disable)")
+
+	pnlCmd.Flags().StringVar(&pnlSymbol, "symbol", "", "Filter by symbol")
+	pnlCmd.Flags().StringVar(&pnlStart, "start", "", "Start time in ISO 8601")
+	pnlCmd.Flags().StringVar(&pnlEnd, "end", "", "End time in ISO 8601")
+	pnlCmd.Flags().Int64Var(&pnlLimitHours, "limit-hours", 168, "Hours of history (default 168, max 2160)")
 }

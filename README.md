@@ -406,13 +406,10 @@ QFEX accepts USDC on the Arbitrum network. To fund your account:
    ```json
    {
      "address": "0x9140391891450b139272d1906b0e89dee7016f03",
-     "available_allowance": 39501032.95
    }
    ```
 
 2. Send USDC (Arbitrum) to the returned `address`.
-
-3. `available_allowance` is the remaining deposit capacity on your account in USD. Deposits above this limit will not be credited.
 
 The deposit address is fetched from `https://banker.qfex.com/address` (or `https://banker.qfex.io/address` on UAT) using HMAC authentication.
 
