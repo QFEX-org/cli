@@ -27,6 +27,7 @@ var (
 	orderCancelIDType string
 	orderLimit        int
 	orderOffset       int
+	orderWait         bool
 )
 
 var placeOrderCmd = &cobra.Command{
@@ -64,6 +65,7 @@ Examples:
 			TakeProfit:    orderTP,
 			StopLoss:      orderSL,
 			ClientOrderID: orderClientID,
+			WaitForFinal:  orderWait,
 		}
 		sendAndPrint(protocol.CmdPlaceOrder, params)
 		return nil
@@ -180,6 +182,7 @@ func init() {
 	placeOrderCmd.Flags().Float64Var(&orderTP, "tp", 0, "Take profit price")
 	placeOrderCmd.Flags().Float64Var(&orderSL, "sl", 0, "Stop loss price")
 	placeOrderCmd.Flags().StringVar(&orderClientID, "client-order-id", "", "Client-assigned order ID")
+	placeOrderCmd.Flags().BoolVar(&orderWait, "wait", false, "Wait for final status after ACK (FILLED, CANCELLED, REJECTED, etc.)")
 
 	// Cancel order flags
 	cancelOrderCmd.Flags().StringVar(&orderID, "order-id", "", "Order ID to cancel")

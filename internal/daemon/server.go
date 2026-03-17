@@ -490,23 +490,48 @@ func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderPara
 		delete(params, "client_order_id")
 	}
 
-	data, err := s.d.trade.Send(ctx, cmd, "order_response", p.ClientOrderID)
+	// Get the ACK first (always the first response for add_order).
+	ackData, err := s.d.trade.Send(ctx, cmd, "order_response", p.ClientOrderID)
 	if err != nil {
 		return errResp(err.Error())
 	}
-	return okResp(data)
+
+	if !p.WaitForFinal {
+		return okResp(ackData)
+	}
+
+	// Extract the exchange-assigned order_id from the ACK to correlate the follow-up.
+	var ack Order
+	if err := json.Unmarshal(ackData, &ack); err != nil || ack.Status != "ACK" {
+		// Already a terminal response (e.g. immediate REJECTED) — return it.
+		return okResp(ackData)
+	}
+
+	// Register as the ACK response in state, then wait for the terminal update.
+	finalData, err := s.d.trade.WaitForFinalStatus(ctx, ack.OrderID, 30*time.Second)
+	if err != nil {
+		// Timed out or context cancelled — return the ACK we already have.
+		return okResp(ackData)
+	}
+	return okResp(finalData)
 }
 
 func (s *Server) handleCancelOrder(ctx context.Context, p protocol.CancelOrderParams) protocol.Response {
 	cmd := map[string]any{
 		"type": "cancel_order",
 		"params": map[string]any{
-			"symbol":                p.Symbol,
+			"symbol":               p.Symbol,
 			"order_id":             p.OrderID,
 			"cancel_order_id_type": p.CancelIDType,
 		},
 	}
-	data, err := s.d.trade.Send(ctx, cmd, "order_response", "")
+	// Cancel responses are always terminal (CANCELLED, NO_SUCH_ORDER, etc.).
+	// Match by order_id when the id type is order_id for precision.
+	matchID := ""
+	if p.CancelIDType == "order_id" {
+		matchID = p.OrderID
+	}
+	data, err := s.d.trade.Send(ctx, cmd, "order_response", matchID)
 	if err != nil {
 		return errResp(err.Error())
 	}
@@ -545,7 +570,9 @@ func (s *Server) handleModifyOrder(ctx context.Context, p protocol.ModifyOrderPa
 		params["stop_loss"] = p.StopLoss
 	}
 	cmd := map[string]any{"type": "modify_order", "params": params}
-	data, err := s.d.trade.Send(ctx, cmd, "order_response", "")
+	// Modify responses are always terminal (MODIFIED, CANNOT_MODIFY_NO_SUCH_ORDER, etc.).
+	// Match by order_id for precision.
+	data, err := s.d.trade.Send(ctx, cmd, "order_response", p.OrderID)
 	if err != nil {
 		return errResp(err.Error())
 	}

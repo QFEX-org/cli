@@ -128,6 +128,8 @@ type PlaceOrderParams struct {
 	TakeProfit    float64 `json:"take_profit,omitempty"`
 	StopLoss      float64 `json:"stop_loss,omitempty"`
 	ClientOrderID string  `json:"client_order_id,omitempty"`
+	// WaitForFinal waits for the terminal status after the initial ACK.
+	WaitForFinal bool `json:"wait_for_final,omitempty"`
 }
 
 type CancelOrderParams struct {

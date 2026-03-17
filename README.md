@@ -181,7 +181,123 @@ qfex order modify --symbol AAPL-USD --order-id 5b309929-... --side BUY --type LI
 | `--tif` | `GTC`, `IOC`, `FOK` |
 | `--id-type` | `order_id`, `client_order_id`, `twap_id`, `client_twap_id` |
 
-**Order response statuses:** `ACK`, `FILLED`, `MODIFIED`, `CANCELLED`, `REJECTED`, `RATE_LIMITED`, and others.
+#### Order response lifecycle
+
+Every order command returns JSON describing the outcome. Understanding the response flow matters when scripting or building agents.
+
+**Placing an order — two-phase response:**
+
+The exchange always sends an `ACK` first to confirm receipt, then may immediately send a second terminal response. By default `order place` returns after the ACK. Use `--wait` to block until the terminal response arrives.
+
+```
+add_order sent
+    │
+    ▼
+ACK  ← returned immediately (default)
+    │
+    ▼ (may follow within milliseconds)
+FILLED / CANCELLED / REJECTED / ...  ← returned with --wait
+```
+
+```sh
+# Default: returns ACK immediately, order may still be open
+qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1
+
+# --wait: blocks until FILLED, CANCELLED, REJECTED, etc.
+qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1 --wait
+```
+
+When to use `--wait`:
+
+| Order type | Without `--wait` | With `--wait` |
+|-----------|-----------------|--------------|
+| `MARKET` | Returns ACK; fill happens async | Returns `FILLED` or `REJECTED` |
+| `IOC` | Returns ACK; fill/cancel happens async | Returns `FILLED` (partial or full) or `CANCELLED` (no fill at all) |
+| `FOK` | Returns ACK; fill or full cancel happens async | Returns `FILLED` (full only) or `CANCELLED` |
+| `LIMIT GTC` | Returns ACK; order rests on book | Returns ACK again after 30s timeout (order is live) |
+
+For `LIMIT GTC` with `--wait`, the command waits up to 30 seconds for a fill or cancellation. If neither arrives, it returns the original ACK — the order is still live on the book.
+
+**Important — `FILLED` does not mean fully filled.** A partial fill also returns `FILLED`. Always check `quantity_remaining` to determine how much was actually executed:
+
+- `quantity_remaining == 0` → fully filled
+- `quantity_remaining > 0` → partially filled (the unfilled portion was cancelled for IOC, or the order is still open for GTC)
+
+For IOC orders specifically, the sequence is: fill what's available → return `FILLED` with `quantity_remaining > 0` if partial, or `CANCELLED` if nothing was filled at all.
+
+**Cancelling an order — single terminal response:**
+
+Cancel always returns a single terminal response directly (no ACK phase):
+
+```
+cancel_order sent
+    │
+    ▼
+CANCELLED  or  NO_SUCH_ORDER
+```
+
+```sh
+qfex order cancel --symbol AAPL-USD --order-id <id>
+```
+
+**Modifying an order — single terminal response:**
+
+```
+modify_order sent
+    │
+    ▼
+MODIFIED  or  CANNOT_MODIFY_NO_SUCH_ORDER  or  CANNOT_MODIFY_PARTIAL_FILL
+```
+
+```sh
+qfex order modify --symbol AAPL-USD --order-id <id> --side BUY --type LIMIT --price 205
+```
+
+**All possible order statuses:**
+
+| Status | Meaning |
+|--------|---------|
+| `ACK` | Order received and live on the book |
+| `FILLED` | Order filled — partially or fully. Check `quantity_remaining` to know how much executed (`0` = full fill, `> 0` = partial fill) |
+| `MODIFIED` | Order successfully modified |
+| `CANCELLED` | Order cancelled (by user, IOC/FOK expiry, or STP) |
+| `CANCELLED_STP` | Cancelled by Self-Trade Prevention |
+| `REJECTED` | Generic rejection |
+| `NO_SUCH_ORDER` | Order ID not found |
+| `CANNOT_MODIFY_NO_SUCH_ORDER` | Modify target not found |
+| `CANNOT_MODIFY_PARTIAL_FILL` | Cannot modify a partially filled order |
+| `FAILED_MARGIN_CHECK` | Insufficient margin |
+| `PRICE_LESS_THAN_MIN_PRICE` | Price below allowed minimum |
+| `PRICE_GREATER_THAN_MAX_PRICE` | Price above allowed maximum |
+| `QUANTITY_LESS_THAN_MIN_QUANTITY` | Quantity too small |
+| `QUANTITY_GREATER_THAN_MAX_QUANTITY` | Quantity too large |
+| `REJECTED_WOULD_BREACH_MAX_NOTIONAL` | Order exceeds max notional |
+| `REJECTED_MARKET_CLOSED` | Market is not currently open |
+| `REJECTED_TOO_MANY_OPEN_ORDERS` | Open order limit reached |
+| `REJECTED_OPEN_INTEREST_LIMIT` | Open interest limit reached |
+| `INVALID_TAKEPROFIT_PRICE` | Invalid take profit price |
+| `INVALID_STOPLOSS_PRICE` | Invalid stop loss price |
+| `INVALID_TIME_IN_FORCE` | Invalid TIF for this order type |
+| `RATE_LIMITED` | Too many requests |
+
+**Example responses:**
+
+```json
+// ACK (order placed, resting on book)
+{"order_id": "5b309929-...", "status": "ACK", "symbol": "AAPL-USD", "side": "BUY", "type": "LIMIT", "quantity": 1, "price": 200, "quantity_remaining": 1}
+
+// FILLED — full fill (quantity_remaining == 0)
+{"order_id": "5b309929-...", "status": "FILLED", "symbol": "AAPL-USD", "side": "BUY", "quantity": 1, "price": 200, "quantity_remaining": 0}
+
+// FILLED — partial fill (quantity_remaining > 0, unfilled portion was cancelled for IOC)
+{"order_id": "5b309929-...", "status": "FILLED", "symbol": "AAPL-USD", "side": "BUY", "quantity": 1, "price": 200, "quantity_remaining": 0.4}
+
+// CANCELLED (IOC/FOK — nothing was filled at all)
+{"order_id": "5b309929-...", "status": "CANCELLED", "symbol": "AAPL-USD", "quantity_remaining": 1}
+
+// REJECTED (e.g. margin failure)
+{"order_id": "5b309929-...", "status": "FAILED_MARGIN_CHECK", "symbol": "AAPL-USD"}
+```
 
 ---
 
@@ -348,6 +464,45 @@ qfex watch bbo AAPL-USD &
 WATCH_PID=$!
 # ... do something with the stream ...
 kill $WATCH_PID
+```
+
+**Placing orders from an agent:**
+
+Without `--wait`, `order place` returns the ACK and exits. The order may not be filled yet. This is fine if you don't need to confirm execution, but makes it hard to know the outcome synchronously.
+
+Use `--wait` when you need to know the result before proceeding:
+
+```sh
+# Place a market buy and wait for confirmation of fill or rejection
+RESULT=$(qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1 --wait)
+STATUS=$(echo "$RESULT" | jq -r '.status')
+REMAINING=$(echo "$RESULT" | jq -r '.quantity_remaining')
+
+if [ "$STATUS" = "FILLED" ] && [ "$REMAINING" = "0" ]; then
+  echo "Order fully filled"
+elif [ "$STATUS" = "FILLED" ]; then
+  # Partial fill — FILLED is returned even when only part of the order executed.
+  # quantity_remaining tells you how much was NOT filled.
+  echo "Order partially filled, remaining: $REMAINING"
+elif [ "$STATUS" = "CANCELLED" ]; then
+  echo "Order not filled at all (IOC — no liquidity)"
+else
+  echo "Order rejected: $STATUS"
+fi
+```
+
+For `LIMIT GTC` orders with `--wait`, the command blocks up to 30 seconds waiting for a fill or cancellation. If neither arrives (the order is sitting on the book), the original ACK is returned. Check `status == "ACK"` to detect this case.
+
+```sh
+RESULT=$(qfex order place --symbol AAPL-USD --side BUY --type LIMIT --tif GTC --qty 1 --price 150 --wait)
+STATUS=$(echo "$RESULT" | jq -r '.status')
+
+if [ "$STATUS" = "ACK" ]; then
+  ORDER_ID=$(echo "$RESULT" | jq -r '.order_id')
+  echo "Order resting on book: $ORDER_ID"
+elif [ "$STATUS" = "FILLED" ]; then
+  echo "Limit order filled immediately"
+fi
 ```
 
 **Error handling:** When a command fails, the exit code is non-zero and stderr contains a human-readable error. Stdout still contains valid JSON with `{"ok": false, "error": "..."}` from the daemon layer, but the CLI will exit 1.

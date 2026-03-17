@@ -42,13 +42,45 @@ type tradeMessage struct {
 	Err                        json.RawMessage `json:"err,omitempty"`
 }
 
+// terminalOrderStatuses are order statuses that are final (not ACK).
+var terminalOrderStatuses = map[string]bool{
+	"FILLED":                              true,
+	"CANCELLED":                           true,
+	"CANCELLED_STP":                       true,
+	"REJECTED":                            true,
+	"NO_SUCH_ORDER":                       true,
+	"INVALID_ORDER_TYPE":                  true,
+	"BAD_SYMBOL":                          true,
+	"PRICE_LESS_THAN_MIN_PRICE":           true,
+	"PRICE_GREATER_THAN_MAX_PRICE":        true,
+	"CANNOT_MODIFY_PARTIAL_FILL":          true,
+	"FAILED_MARGIN_CHECK":                 true,
+	"INVALID_TICK_SIZE_PRECISION_PRICE":   true,
+	"INVALID_TICK_SIZE_PRECISION_QUANTITY": true,
+	"QUANTITY_LESS_THAN_MIN_QUANTITY":     true,
+	"QUANTITY_GREATER_THAN_MAX_QUANTITY":  true,
+	"INVALID_TIME_IN_FORCE":               true,
+	"REJECTED_WOULD_BREACH_MAX_NOTIONAL":  true,
+	"CANNOT_MODIFY_NO_SUCH_ORDER":         true,
+	"REJECTED_MARKET_CLOSED":              true,
+	"REJECTED_FAILED_TO_PROCESS":          true,
+	"INVALID_TAKEPROFIT_PRICE":            true,
+	"INVALID_STOPLOSS_PRICE":              true,
+	"RATE_LIMITED":                        true,
+	"REJECTED_TOO_MANY_OPEN_ORDERS":       true,
+	"REJECTED_OPEN_INTEREST_LIMIT":        true,
+	"MODIFIED":                            true,
+}
+
 // pendingRequest waits for a specific response from the Trade WS.
 type pendingRequest struct {
 	// responseKey is the JSON key to match (e.g. "order_response")
 	responseKey string
 	// clientOrderID filters order responses (empty = match first)
 	clientOrderID string
-	ch            chan json.RawMessage
+	// skipIfACK skips order_response messages with status "ACK", waiting for a terminal status.
+	skipIfACK bool
+	ch        chan json.RawMessage
 }
 
 // TradeWS manages the authenticated Trade WebSocket connection.
@@ -443,15 +475,63 @@ func (t *TradeWS) resolvePending(responseKey, clientOrderID string, data json.Ra
 		if p.clientOrderID != "" && clientOrderID != "" && p.clientOrderID != clientOrderID {
 			continue
 		}
+		// If this waiter only wants terminal statuses, skip ACK responses.
+		if p.skipIfACK && responseKey == "order_response" {
+			var o struct {
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(data, &o) == nil && o.Status == "ACK" {
+				continue
+			}
+		}
 		select {
 		case p.ch <- data:
 		default:
 		}
-		// Remove from pending
 		t.pending = append(t.pending[:i], t.pending[i+1:]...)
 		return true
 	}
 	return false
+}
+
+// WaitForFinalStatus registers a pending request that resolves on the next
+// non-ACK order_response for the given orderID. Used after an ACK has already
+// been received to await FILLED, CANCELLED, REJECTED, etc.
+func (t *TradeWS) WaitForFinalStatus(ctx context.Context, orderID string, timeout time.Duration) (json.RawMessage, error) {
+	p := &pendingRequest{
+		responseKey:   "order_response",
+		clientOrderID: orderID,
+		skipIfACK:     true,
+		ch:            make(chan json.RawMessage, 1),
+	}
+
+	t.pendingMu.Lock()
+	t.pending = append(t.pending, p)
+	t.pendingMu.Unlock()
+
+	defer func() {
+		t.pendingMu.Lock()
+		next := t.pending[:0]
+		for _, x := range t.pending {
+			if x != p {
+				next = append(next, x)
+			}
+		}
+		t.pending = next
+		t.pendingMu.Unlock()
+	}()
+
+	select {
+	case data := <-p.ch:
+		if data == nil {
+			return nil, fmt.Errorf("connection closed while waiting for final status")
+		}
+		return data, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for final order status")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (t *TradeWS) failPending(errData json.RawMessage) {
