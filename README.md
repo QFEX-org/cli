@@ -413,6 +413,10 @@ QFEX accepts USDC on the Arbitrum network. To fund your account:
 
 The deposit address is fetched from `https://banker.qfex.com/address` (or `https://banker.qfex.io/address` on UAT) using HMAC authentication.
 
+#### Withdrawals
+
+Withdrawals require two-factor authentication (2FA) and cannot be initiated from the CLI. Use the QFEX web app to withdraw funds.
+
 ---
 
 ### TWAP Orders
