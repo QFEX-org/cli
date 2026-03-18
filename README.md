@@ -14,6 +14,37 @@ brew install QFEX-org/tap/qfex
 
 ---
 
+## AI Agent Setup
+
+Run once to configure everything automatically:
+
+```sh
+# Global (default): configures ~/.claude/ and ~/.codex/ so qfex does not repeatedly prompt for permission
+qfex agents init
+
+# Local: writes CLAUDE.md + AGENTS.md to the current project directory
+qfex agents init --local
+```
+
+`qfex agents init` writes `~/.claude/CLAUDE.md` (loaded by Claude Code in every session), adds `Bash(qfex*)` to `~/.claude/settings.json`, and adds `qfex` to `~/.codex/config.toml`. Use `--local` to write `CLAUDE.md` and `AGENTS.md` to the current directory instead — useful for project-specific context or for Codex, which discovers `AGENTS.md` by directory traversal rather than a global path.
+
+To configure manually:
+
+**Claude Code** — add to `~/.claude/settings.json`:
+```json
+{
+  "allowedTools": ["Bash(qfex*)"]
+}
+```
+
+**Codex** — add to `~/.codex/config.toml`:
+```toml
+[sandbox]
+allowed_programs = ["qfex"]
+```
+
+---
+
 ## Quick Start
 
 No login required for market data:
