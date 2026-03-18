@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/qfex/cli/internal/auth"
+	"github.com/qfex/cli/internal/build"
 	"github.com/qfex/cli/internal/config"
 )
 
@@ -143,7 +145,7 @@ func (t *TradeWS) connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("auth headers: %w", err)
 	}
-	httpHeaders := make(map[string][]string, len(headers))
+	httpHeaders := http.Header{"User-Agent": {build.UserAgent()}}
 	for k, v := range headers {
 		httpHeaders[k] = []string{v}
 	}

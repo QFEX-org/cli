@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/qfex/cli/internal/auth"
+	"github.com/qfex/cli/internal/build"
 )
 
 // apiGetURL makes a GET request to an arbitrary URL and returns the parsed JSON body.
@@ -72,6 +73,7 @@ func apiStream(path string, params url.Values, needsAuth bool) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	req.Header.Set("User-Agent", build.UserAgent())
 	if needsAuth {
 		setAuthHeaders(req)
 	}
@@ -131,6 +133,7 @@ func symbolCompletion(cmd *cobra.Command, args []string, toComplete string) ([]s
 }
 
 func doRequest(req *http.Request) json.RawMessage {
+	req.Header.Set("User-Agent", build.UserAgent())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

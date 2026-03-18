@@ -16,7 +16,7 @@ builds:
     main: .
     binary: qfex
     ldflags:
-      - -s -w -X github.com/qfex/cli/cmd.Version={{.Version}}
+      - -s -w -X github.com/qfex/cli/internal/build.Version={{.Version}}
 
 archives:
   - formats:

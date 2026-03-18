@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/qfex/cli/internal/build"
 )
 
 // mdsMessage is the raw incoming message from the MDS WebSocket.
@@ -94,8 +97,8 @@ func (m *MDSWS) Run(ctx context.Context) {
 }
 
 func (m *MDSWS) connect(ctx context.Context) error {
-	dialer := websocket.DefaultDialer
-	conn, _, err := dialer.DialContext(ctx, m.url, nil)
+	headers := http.Header{"User-Agent": {build.UserAgent()}}
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, m.url, headers)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
