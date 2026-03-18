@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -94,9 +96,41 @@ Also returns available_allowance — the remaining deposit capacity on your acco
 var feesCmd = &cobra.Command{
 	Use:   "fees",
 	Short: "Get your fee tiers",
+	Long:  `Get your maker/taker fee rates per symbol. Rates are shown as percentages (e.g. -0.01 = -0.01% maker rebate).`,
 	Run: func(cmd *cobra.Command, args []string) {
-		printResult(apiGet("/user/fees", nil, true))
+		raw := apiGet("/user/fees", nil, true)
+		var resp struct {
+			Fees map[string]struct {
+				MakerFee int64 `json:"maker_fee"`
+				TakerFee int64 `json:"taker_fee"`
+			} `json:"fees"`
+		}
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			printResult(raw)
+			return
+		}
+		type feeEntry struct {
+			MakerFee float64 `json:"maker_fee_pct"`
+			TakerFee float64 `json:"taker_fee_pct"`
+		}
+		out := make(map[string]feeEntry, len(resp.Fees))
+		for symbol, f := range resp.Fees {
+			out[symbol] = feeEntry{
+				MakerFee: float64(f.MakerFee) / 1e6,
+				TakerFee: float64(f.TakerFee) / 1e6,
+			}
+		}
+		printJSON(mustMarshalJSON(out))
 	},
+}
+
+func mustMarshalJSON(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	return b
 }
 
 var (
