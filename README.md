@@ -9,8 +9,7 @@ All output is JSON. Every command is stateless from the caller's perspective —
 ## Installation
 
 ```sh
-brew tap QFEX-org/tap
-brew install qfex
+brew install QFEX-org/qfex
 ```
 
 ---
