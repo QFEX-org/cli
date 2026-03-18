@@ -478,15 +478,6 @@ qfex watch bbo AAPL-USD | jq '.bid[0][0]'
 
 ---
 
-## Available Symbols
-
-Equities: `AAPL-USD`, `PLTR-USD`, `NVDA-USD`, `GOOGL-USD`, `TSLA-USD`, `MSFT-USD`, `META-USD`, `HOOD-USD`, `CRWV-USD`, `INTC-USD`, `CRCL-USD`, `SNDK-USD`, `RKLB-USD`
-
-Commodities: `GOLD-USD`, `SILVER-USD`, `URANIUM-USD`, `CL-USD`, `NATGAS-USD`, `COPPER-USD`
-
-Indices: `US100-USD`, `US500-USD`
-
-Forex: `EUR-USD`, `GBP-USD`
 
 ---
 
@@ -549,6 +540,16 @@ Response:
 {"ok": true, "data": {"symbol": "AAPL-USD", "bid": [...], "ask": [...]}}
 ```
 
+---
+
+## Autocomplete
+
+To enable autocomplete, add the following to your `.bashrc` or `.bash_profile`:
+
+```bash
+# you can also generate completions for zsh and fish shells by replacing `bash` with `zsh` or `fish`
+source <(qfex completion bash)
+```
 ---
 
 ## Troubleshooting
