@@ -16,18 +16,27 @@ brew install QFEX-org/tap/qfex
 
 ## Quick Start
 
-```sh
-# 1. Log in with your API credentials
-qfex login
+No login required for market data:
 
-# 2. Start the daemon
+```sh
+# Start the daemon
 qfex daemon start
 
-# 3. Get market data
+# View market data — no credentials needed
+qfex market symbols
 qfex market bbo AAPL-USD
+qfex market orderbook AAPL-USD
+qfex market trades AAPL-USD
+```
 
-# 4. When done
-qfex daemon stop
+To place orders or view account data, log in first:
+
+```sh
+qfex login
+qfex daemon restart   # applies credentials
+
+qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1
+qfex account balance
 ```
 
 To generate API keys: sign in at [qfex.com](https://qfex.com), navigate to Developer Settings, and click "Generate public and secret API Keys". Full instructions at [docs.qfex.com/api-reference/introduction](https://docs.qfex.com/api-reference/introduction).
@@ -489,12 +498,15 @@ The daemon must be running before any other command works. A minimal agent workf
 # 1. Start daemon (idempotent — safe to call even if already running)
 qfex daemon start
 
-# 2. Check it's ready
+# 2. Check it's ready (trade_authed only required for trading)
 qfex daemon status
-# Expected: {"mds_connected": true, "running": true, "trade_authed": true}
+# Market data only: {"mds_connected": true, "running": true}
+# With credentials: {"mds_connected": true, "running": true, "trade_authed": true}
 
 # 3. Issue commands — all output is JSON
+# Market data needs no credentials:
 qfex market bbo AAPL-USD
+# Trading requires credentials (qfex login + daemon restart):
 qfex order place --symbol AAPL-USD --side BUY --type LIMIT --tif GTC --qty 1 --price 200
 
 # 4. Parse responses with jq or your language's JSON library
