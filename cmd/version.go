@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -59,11 +61,26 @@ var envCmd = &cobra.Command{
 			return fmt.Errorf("saving config: %w", err)
 		}
 		fmt.Printf("Switched to %s\n", target)
+		if cli.IsRunning() {
+			if envRestart {
+				fmt.Println("Restarting daemon...")
+				return runDaemonRestart(cmd, args)
+			}
+			fmt.Print("Daemon is running. Restart now to apply environment change? (y/N): ")
+			answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			if strings.ToLower(strings.TrimSpace(answer)) == "y" {
+				fmt.Println("Restarting daemon...")
+				return runDaemonRestart(cmd, args)
+			}
+		}
 		return nil
 	},
 }
 
+var envRestart bool
+
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(envCmd)
+	envCmd.Flags().BoolVar(&envRestart, "restart", false, "Restart the daemon automatically after switching")
 }
