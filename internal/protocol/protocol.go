@@ -66,6 +66,7 @@ const (
 	StreamMarkPrice    = "mark_price"
 	StreamFundingRate  = "funding_rate"
 	StreamOpenInterest = "open_interest"
+	StreamCandles      = "candle"
 )
 
 // Request is a message from CLI to daemon (newline-delimited JSON).
@@ -210,7 +211,8 @@ type GetUserTradesParams struct {
 }
 
 type GetFillsParams struct {
-	Limit int `json:"limit,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Symbol string `json:"symbol,omitempty"`
 }
 
 type WatchParams struct {

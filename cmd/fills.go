@@ -8,19 +8,20 @@ import (
 
 var fillsCmd = &cobra.Command{
 	Use:   "fills",
-	Short: "Fill (execution) commands",
+	Short: "Your private fill (execution) history",
 }
 
 var fillsLimit int
+var fillsSymbol string
 
 var listFillsCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List recent fills",
-	Long:  `List recently executed fills (trades). The daemon caches the most recent 200 fills.`,
+	Short: "List your recent private fills",
+	Long:  `List your recently executed fills (private executions from the Trade WS). The daemon caches the most recent 200 fills. For public trade data, use 'qfex watch trades <symbol>'.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		requireAuth()
-		sendAndPrint(protocol.CmdGetFills, protocol.GetFillsParams{Limit: fillsLimit})
+		sendAndPrint(protocol.CmdGetFills, protocol.GetFillsParams{Limit: fillsLimit, Symbol: fillsSymbol})
 	},
 }
 
@@ -29,4 +30,5 @@ func init() {
 	fillsCmd.AddCommand(listFillsCmd)
 
 	listFillsCmd.Flags().IntVar(&fillsLimit, "limit", 50, "Maximum number of fills to show")
+	listFillsCmd.Flags().StringVar(&fillsSymbol, "symbol", "", "Filter by symbol (e.g. AAPL-USD)")
 }

@@ -3,6 +3,8 @@ package daemon
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -474,25 +476,27 @@ func (s *Server) handleGetOpenInterest(p protocol.GetOpenInterestParams) protoco
 }
 
 func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderParams) protocol.Response {
+	// When waiting for final status we need a known client_order_id to correlate
+	// the terminal response, which may arrive milliseconds after the ACK.
+	if p.WaitForFinal && p.ClientOrderID == "" {
+		p.ClientOrderID = newClientOrderID()
+	}
+
 	cmd := map[string]any{
 		"type": "add_order",
 		"params": map[string]any{
-			"symbol":                 p.Symbol,
-			"side":                   p.Side,
-			"order_type":             p.OrderType,
-			"order_time_in_force":    p.TimeInForce,
-			"quantity":               p.Quantity,
-			"price":                  p.Price,
-			"take_profit":            p.TakeProfit,
-			"stop_loss":              p.StopLoss,
-			"client_order_id":        p.ClientOrderID,
+			"symbol":              p.Symbol,
+			"side":                p.Side,
+			"order_type":          p.OrderType,
+			"order_time_in_force": p.TimeInForce,
+			"quantity":            p.Quantity,
+			"price":               p.Price,
+			"take_profit":         p.TakeProfit,
+			"stop_loss":           p.StopLoss,
+			"client_order_id":     p.ClientOrderID,
 		},
 	}
-	// Remove zero-value optional fields
 	params := cmd["params"].(map[string]any)
-	if p.Price == 0 {
-		delete(params, "price")
-	}
 	if p.TakeProfit == 0 {
 		delete(params, "take_profit")
 	}
@@ -503,7 +507,13 @@ func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderPara
 		delete(params, "client_order_id")
 	}
 
-	// Get the ACK first (always the first response for add_order).
+	// Pre-register the final-status pending BEFORE sending the order so we
+	// cannot miss a terminal response that arrives right after the ACK.
+	var finalCh chan json.RawMessage
+	if p.WaitForFinal {
+		finalCh = s.d.trade.PreRegisterFinal(p.ClientOrderID)
+	}
+
 	ackData, err := s.d.trade.Send(ctx, cmd, "order_response", p.ClientOrderID)
 	if err != nil {
 		return errResp(err.Error())
@@ -513,17 +523,15 @@ func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderPara
 		return okResp(ackData)
 	}
 
-	// Extract the exchange-assigned order_id from the ACK to correlate the follow-up.
+	// If the ACK is already terminal (e.g. immediate REJECTED), return it.
 	var ack Order
 	if err := json.Unmarshal(ackData, &ack); err != nil || ack.Status != "ACK" {
-		// Already a terminal response (e.g. immediate REJECTED) — return it.
 		return okResp(ackData)
 	}
 
-	// Register as the ACK response in state, then wait for the terminal update.
-	finalData, err := s.d.trade.WaitForFinalStatus(ctx, ack.OrderID, 30*time.Second)
+	finalData, err := s.d.trade.WaitOnFinal(ctx, finalCh, 30*time.Second)
 	if err != nil {
-		// Timed out or context cancelled — return the ACK we already have.
+		// Timed out (e.g. GTC resting on book) — return the ACK we have.
 		return okResp(ackData)
 	}
 	return okResp(finalData)
@@ -759,7 +767,7 @@ func (s *Server) handleModifyStopOrder(ctx context.Context, p protocol.ModifySto
 }
 
 func (s *Server) handleGetFills(p protocol.GetFillsParams) protocol.Response {
-	fills := s.d.state.getFills(p.Limit)
+	fills := s.d.state.getFills(p.Limit, p.Symbol)
 	return okResp(mustMarshal(fills))
 }
 
@@ -836,6 +844,12 @@ func (s *Server) handleCancelOnDisconnect(ctx context.Context, p protocol.Cancel
 }
 
 // ---- Helpers ----
+
+func newClientOrderID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 func okResp(data json.RawMessage) protocol.Response {
 	return protocol.Response{OK: true, Data: data}

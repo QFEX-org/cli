@@ -6,28 +6,32 @@ All output is JSON. Every command is stateless from the caller's perspective —
 
 ---
 
+## Installation
+
+```sh
+brew tap QFEX-org/tap
+brew install qfex
+```
+
+---
+
 ## Quick Start
 
 ```sh
-# 1. Build
-go build -o qfex .
+# 1. Log in with your API credentials
+qfex login
 
-# 2. Configure credentials (optional for market data, required for trading)
-mkdir -p ~/.config/qfex
-cat > ~/.config/qfex/config.yaml <<EOF
-public_key: qfex_pub_xxxxx
-secret_key: your_secret_key
-EOF
+# 2. Start the daemon
+qfex daemon start
 
-# 3. Start the daemon
-./qfex daemon start
+# 3. Get market data
+qfex market bbo AAPL-USD
 
-# 4. Get market data
-./qfex market bbo AAPL-USD
-
-# 5. When done
-./qfex daemon stop
+# 4. When done
+qfex daemon stop
 ```
+
+To generate API keys: sign in at [qfex.com](https://qfex.com), navigate to Developer Settings, and click "Generate public and secret API Keys". Full instructions at [docs.qfex.com/api-reference/introduction](https://docs.qfex.com/api-reference/introduction).
 
 ---
 
@@ -60,46 +64,36 @@ The daemon maintains persistent WebSocket connections and caches state. The CLI 
 
 ## Configuration
 
-**File:** `~/.config/qfex/config.yaml`
+Run `qfex login` to set credentials interactively. This saves to `~/.config/qfex/config.yaml`.
 
 ```yaml
-public_key: qfex_pub_xxxxx   # Required for trading
-secret_key: your_secret_key  # Required for trading
-env: prod                    # "prod" (default) or "uat"
+public_key: qfex_pub_xxxxx     # Required for trading
+secret_key: qfex_secret_xxxxx  # Required for trading
+env: prod                      # "prod" (default) or "uat"
 ```
 
 Market data commands work without credentials. Trading commands (orders, positions, balance) require credentials.
 
 ### Environments
 
+QFEX runs two environments:
+
+- **Production** — [qfex.com](https://qfex.com). Real funds.
+- **UAT** — [qfex.io](https://qfex.io). Identical API and behaviour, separate exchange instance with no real funds. Use this for testing strategies, integrations, and order flow before going live.
+
+The CLI connects to production by default. To use UAT, select it during `qfex login` or set `env: uat` in the config file.
+
 | `env` | Trade WebSocket | MDS WebSocket |
 |-------|----------------|---------------|
 | `prod` (default) | `wss://trade.qfex.com/` | `wss://mds.qfex.com/` |
 | `uat` | `wss://trade.qfex.io/` | `wss://mds.qfex.io/` |
 
-UAT is identical to production in behaviour and API shape, but uses a separate exchange instance at `qfex.io`. Use it for testing order placement without risking real funds.
-
-To switch environments, change `env` in the config file and restart the daemon:
+To switch environments, run `qfex login` again or edit the config file and restart the daemon:
 
 ```sh
-# Switch to UAT
-echo "env: uat" >> ~/.config/qfex/config.yaml
 qfex daemon restart
-
-# Confirm which environment is active
 qfex daemon status
 # "env": "uat", "trade_url": "wss://trade.qfex.io/"
-
-# Switch back to prod
-sed -i '' 's/env: uat/env: prod/' ~/.config/qfex/config.yaml
-qfex daemon restart
-```
-
-You can also override the URLs directly if you need a custom endpoint (takes precedence over `env`):
-
-```yaml
-trade_ws_url: wss://trade.qfex.io/
-mds_url: wss://mds.qfex.io/
 ```
 
 **Paths used:**
@@ -156,13 +150,26 @@ qfex market orderbook AAPL-USD --depth 5
 qfex market trades AAPL-USD
 qfex market trades AAPL-USD --limit 50
 
-# Candles (intervals: 1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY)
+# Candles (live, latest candle per interval)
 qfex market candles AAPL-USD --interval 1MIN
 
 # Derivatives data
 qfex market mark-price AAPL-USD
 qfex market funding-rate AAPL-USD
 qfex market open-interest AAPL-USD
+
+# REST endpoints (no daemon required)
+qfex market refdata                         # All symbol reference data
+qfex market refdata --ticker AAPL-USD
+qfex market metrics                         # Mark price, volume, OI for all symbols
+qfex market candles-history AAPL-USD --resolution 1MIN --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market funding-history AAPL-USD --interval 60 --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market oi-history AAPL-USD --interval 60 --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market long-short AAPL-USD --interval 1h --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market taker-volume AAPL-USD --interval 60 --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market underlier AAPL-USD --interval 1h --from 2024-01-01T00:00:00Z --to 2024-01-02T00:00:00Z
+qfex market settlement-calendar
+qfex market settlement-prices
 ```
 
 **Example BBO output:**
@@ -267,17 +274,11 @@ For IOC orders specifically, the sequence is: fill what's available → return `
 
 **Cancelling an order — single terminal response:**
 
-Cancel always returns a single terminal response directly (no ACK phase):
-
 ```
 cancel_order sent
     │
     ▼
 CANCELLED  or  NO_SUCH_ORDER
-```
-
-```sh
-qfex order cancel --symbol AAPL-USD --order-id <id>
 ```
 
 **Modifying an order — single terminal response:**
@@ -289,16 +290,12 @@ modify_order sent
 MODIFIED  or  CANNOT_MODIFY_NO_SUCH_ORDER  or  CANNOT_MODIFY_PARTIAL_FILL
 ```
 
-```sh
-qfex order modify --symbol AAPL-USD --order-id <id> --side BUY --type LIMIT --price 205
-```
-
 **All possible order statuses:**
 
 | Status | Meaning |
 |--------|---------|
 | `ACK` | Order received and live on the book |
-| `FILLED` | Order filled — partially or fully. Check `quantity_remaining` to know how much executed (`0` = full fill, `> 0` = partial fill) |
+| `FILLED` | Order filled — partially or fully. Check `quantity_remaining` (`0` = full fill, `> 0` = partial fill) |
 | `MODIFIED` | Order successfully modified |
 | `CANCELLED` | Order cancelled (by user, IOC/FOK expiry, or STP) |
 | `CANCELLED_STP` | Cancelled by Self-Trade Prevention |
@@ -320,25 +317,6 @@ qfex order modify --symbol AAPL-USD --order-id <id> --side BUY --type LIMIT --pr
 | `INVALID_TIME_IN_FORCE` | Invalid TIF for this order type |
 | `RATE_LIMITED` | Too many requests |
 
-**Example responses:**
-
-```json
-// ACK (order placed, resting on book)
-{"order_id": "5b309929-...", "status": "ACK", "symbol": "AAPL-USD", "side": "BUY", "type": "LIMIT", "quantity": 1, "price": 200, "quantity_remaining": 1}
-
-// FILLED — full fill (quantity_remaining == 0)
-{"order_id": "5b309929-...", "status": "FILLED", "symbol": "AAPL-USD", "side": "BUY", "quantity": 1, "price": 200, "quantity_remaining": 0}
-
-// FILLED — partial fill (quantity_remaining > 0, unfilled portion was cancelled for IOC)
-{"order_id": "5b309929-...", "status": "FILLED", "symbol": "AAPL-USD", "side": "BUY", "quantity": 1, "price": 200, "quantity_remaining": 0.4}
-
-// CANCELLED (IOC/FOK — nothing was filled at all)
-{"order_id": "5b309929-...", "status": "CANCELLED", "symbol": "AAPL-USD", "quantity_remaining": 1}
-
-// REJECTED (e.g. margin failure)
-{"order_id": "5b309929-...", "status": "FAILED_MARGIN_CHECK", "symbol": "AAPL-USD"}
-```
-
 ---
 
 ### Positions
@@ -354,20 +332,6 @@ qfex position close --symbol AAPL-USD
 qfex position close --symbol AAPL-USD --client-order-id my-close-001
 ```
 
-**Example position output:**
-```json
-[
-  {
-    "symbol": "AAPL-USD",
-    "position": 5.0,
-    "average_price": 198.50,
-    "unrealised_pnl": 77.50,
-    "leverage": 10,
-    "initial_margin": 99.25
-  }
-]
-```
-
 ---
 
 ### Account
@@ -378,16 +342,19 @@ Requires credentials.
 # Account balance
 qfex account balance
 
+# Fee tiers
+qfex account fees
+
+# Hourly PnL
+qfex account pnl
+qfex account pnl --symbol AAPL-USD --limit-hours 48
+
 # Deposit address (USDC on Arbitrum)
 qfex account deposit
 
-# View current leverage settings
+# Leverage
 qfex account leverage get
-
-# View available leverage levels
 qfex account leverage available
-
-# Set leverage for a symbol
 qfex account leverage set --symbol AAPL-USD --leverage 10
 
 # Enable cancel-on-disconnect (orders cancelled if connection drops)
@@ -404,14 +371,9 @@ QFEX accepts USDC on the Arbitrum network. To fund your account:
    qfex account deposit
    ```
    ```json
-   {
-     "address": "0x9140391891450b139272d1906b0e89dee7016f03",
-   }
+   { "address": "0x9140391891450b139272d1906b0e89dee7016f03" }
    ```
-
 2. Send USDC (Arbitrum) to the returned `address`.
-
-The deposit address is fetched from `https://banker.qfex.com/address` (or `https://banker.qfex.io/address` on UAT) using HMAC authentication.
 
 #### Withdrawals
 
@@ -419,9 +381,32 @@ Withdrawals require two-factor authentication (2FA) and cannot be initiated from
 
 ---
 
-### TWAP Orders
+### Historic Data
 
-Time-Weighted Average Price orders split a large order into many small market orders.
+Requires credentials. No daemon required.
+
+```sh
+# Filled/closed orders
+qfex history orders
+qfex history orders --symbol AAPL-USD --limit 50
+
+# Historic TWAP orders
+qfex history twaps
+qfex history twaps --symbol AAPL-USD
+
+# Trade history
+qfex history trades
+qfex history trades --symbol AAPL-USD --start 2024-01-01T00:00:00Z
+
+# CSV exports
+qfex history orders-csv > orders.csv
+qfex history twaps-csv > twaps.csv
+qfex history trades-csv > trades.csv
+```
+
+---
+
+### TWAP Orders
 
 ```sh
 # Buy 100 units of AAPL-USD, split into 10 orders, one every 30 seconds
@@ -450,8 +435,6 @@ qfex stop modify --stop-order-id <id> --symbol AAPL-USD --price 190 --qty 1
 
 ### Fills & Trade History
 
-Requires credentials.
-
 ```sh
 # Recent fills (daemon caches last 200)
 qfex fills list
@@ -461,7 +444,6 @@ qfex fills list --limit 20
 qfex trades list
 qfex trades list --limit 50
 qfex trades list --order-id <order-id>
-qfex trades list --start-ts 1760000000 --end-ts 1760100000
 ```
 
 ---
@@ -477,6 +459,10 @@ qfex watch orderbook AAPL-USD
 qfex watch trades AAPL-USD
 qfex watch mark-price AAPL-USD
 qfex watch funding-rate AAPL-USD
+
+# Candles (all intervals, or a specific one)
+qfex watch candles AAPL-USD
+qfex watch candles AAPL-USD --interval 1MIN
 
 # Account streams (requires credentials)
 qfex watch positions
@@ -533,12 +519,9 @@ kill $WATCH_PID
 
 **Placing orders from an agent:**
 
-Without `--wait`, `order place` returns the ACK and exits. The order may not be filled yet. This is fine if you don't need to confirm execution, but makes it hard to know the outcome synchronously.
-
 Use `--wait` when you need to know the result before proceeding:
 
 ```sh
-# Place a market buy and wait for confirmation of fill or rejection
 RESULT=$(qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1 --wait)
 STATUS=$(echo "$RESULT" | jq -r '.status')
 REMAINING=$(echo "$RESULT" | jq -r '.quantity_remaining')
@@ -546,8 +529,6 @@ REMAINING=$(echo "$RESULT" | jq -r '.quantity_remaining')
 if [ "$STATUS" = "FILLED" ] && [ "$REMAINING" = "0" ]; then
   echo "Order fully filled"
 elif [ "$STATUS" = "FILLED" ]; then
-  # Partial fill — FILLED is returned even when only part of the order executed.
-  # quantity_remaining tells you how much was NOT filled.
   echo "Order partially filled, remaining: $REMAINING"
 elif [ "$STATUS" = "CANCELLED" ]; then
   echo "Order not filled at all (IOC — no liquidity)"
@@ -556,23 +537,9 @@ else
 fi
 ```
 
-For `LIMIT GTC` orders with `--wait`, the command blocks up to 30 seconds waiting for a fill or cancellation. If neither arrives (the order is sitting on the book), the original ACK is returned. Check `status == "ACK"` to detect this case.
+**Error handling:** When a command fails, the exit code is non-zero and stderr contains a human-readable error.
 
-```sh
-RESULT=$(qfex order place --symbol AAPL-USD --side BUY --type LIMIT --tif GTC --qty 1 --price 150 --wait)
-STATUS=$(echo "$RESULT" | jq -r '.status')
-
-if [ "$STATUS" = "ACK" ]; then
-  ORDER_ID=$(echo "$RESULT" | jq -r '.order_id')
-  echo "Order resting on book: $ORDER_ID"
-elif [ "$STATUS" = "FILLED" ]; then
-  echo "Limit order filled immediately"
-fi
-```
-
-**Error handling:** When a command fails, the exit code is non-zero and stderr contains a human-readable error. Stdout still contains valid JSON with `{"ok": false, "error": "..."}` from the daemon layer, but the CLI will exit 1.
-
-**IPC protocol:** If you want to speak to the daemon directly (bypassing the CLI), connect to the Unix socket and send newline-delimited JSON:
+**IPC protocol:** Connect directly to the Unix socket and send newline-delimited JSON:
 
 ```json
 {"cmd": "get_bbo", "params": {"symbol": "AAPL-USD"}}
@@ -582,8 +549,6 @@ Response:
 ```json
 {"ok": true, "data": {"symbol": "AAPL-USD", "bid": [...], "ask": [...]}}
 ```
-
-Available IPC commands match the CLI commands: `get_bbo`, `get_orderbook`, `get_trades`, `get_mark_price`, `get_funding_rate`, `get_open_interest`, `place_order`, `cancel_order`, `cancel_all`, `modify_order`, `get_order`, `get_orders`, `get_positions`, `close_position`, `get_balance`, `get_leverage`, `set_leverage`, `get_available_leverage`, `add_twap`, `cancel_stop_order`, `modify_stop_order`, `get_fills`, `get_user_trades`, `cancel_on_disconnect`, `watch`, `status`, `ping`.
 
 ---
 
@@ -595,7 +560,7 @@ cat ~/.local/share/qfex/daemon.log
 ```
 
 **Not authenticated (trading commands fail):**
-- Check `~/.config/qfex/config.yaml` has valid `public_key` and `secret_key`
+- Run `qfex login` to set credentials, then `qfex daemon restart`
 - Run `qfex daemon status` — `trade_authed` should be `true`
 
 **Stale socket (daemon crashed):**
@@ -606,3 +571,25 @@ qfex daemon start
 
 **No data for a symbol:**
 The daemon subscribes on first request. Re-run the command — data arrives within a few hundred milliseconds once subscribed.
+
+---
+
+## Developer
+
+### Building from source
+
+```sh
+git clone https://github.com/QFEX-org/cli
+cd cli
+go build -o qfex .
+```
+
+### Running tests
+
+```sh
+go test ./...
+```
+
+### Cutting a release
+
+See [RELEASING.md](RELEASING.md).

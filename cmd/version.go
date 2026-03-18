@@ -17,6 +17,19 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var envCmd = &cobra.Command{
+	Use:   "env",
+	Short: "Show the current environment (prod or UAT)",
+	Run: func(cmd *cobra.Command, args []string) {
+		if cfg.IsUAT() {
+			fmt.Println("uat (qfex.io)")
+		} else {
+			fmt.Println("prod (qfex.com)")
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(envCmd)
 }

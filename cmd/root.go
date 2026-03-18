@@ -27,6 +27,19 @@ Commands that require live market data or trading (order, watch, account balance
 communicate with a background daemon. Run 'qfex daemon start' first for those.
 
 REST-based commands (market refdata, market metrics, history, etc.) work without the daemon.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		env := "prod (qfex.com)"
+		if cfg.IsUAT() {
+			env = "UAT (qfex.io)"
+		}
+		fmt.Fprintf(os.Stderr, "Environment: %s\n", env)
+		if cfg.HasCredentials() {
+			fmt.Fprintf(os.Stderr, "Logged in   public key: %s\n\n", cfg.PublicKey)
+		} else {
+			fmt.Fprintf(os.Stderr, "Not logged in  run 'qfex login' to add your API credentials\n\n")
+		}
+		cmd.Help()
+	},
 }
 
 func Execute() {
@@ -112,6 +125,6 @@ func requireAuth() {
 		TradeAuthed bool `json:"trade_authed"`
 	}
 	if json.Unmarshal(resp.Data, &status) == nil && !status.TradeAuthed {
-		fmt.Fprintln(os.Stderr, "Warning: not authenticated to trading API\nSet public_key and secret_key in ~/.config/qfex/config.yaml")
+		fmt.Fprintf(os.Stderr, "Warning: not authenticated to trading API\nRun 'qfex login' or set credentials in %s, then restart the daemon\n", config.Path())
 	}
 }

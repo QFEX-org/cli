@@ -1,5 +1,6 @@
 # Build output
 qfex
+cli
 dist/
 
 # Go

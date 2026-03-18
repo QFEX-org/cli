@@ -190,8 +190,8 @@ func init() {
 
 	// Modify order flags
 	modifyOrderCmd.Flags().StringVar(&orderID, "order-id", "", "Order ID to modify")
-	modifyOrderCmd.Flags().StringVar(&orderSide, "side", "", "New side: BUY or SELL")
-	modifyOrderCmd.Flags().StringVar(&orderType, "type", "", "New type: LIMIT, MARKET, ALO")
+	modifyOrderCmd.Flags().StringVar(&orderSide, "side", "", "Current side of the order: BUY or SELL")
+	modifyOrderCmd.Flags().StringVar(&orderType, "type", "", "Current type of the order: LIMIT, MARKET, ALO")
 	modifyOrderCmd.Flags().Float64Var(&orderQty, "qty", 0, "New quantity")
 	modifyOrderCmd.Flags().Float64Var(&orderPrice, "price", 0, "New limit price")
 	modifyOrderCmd.Flags().Float64Var(&orderTP, "tp", 0, "New take profit price")

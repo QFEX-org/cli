@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/qfex/cli/internal/config"
 	"github.com/qfex/cli/internal/daemon"
+	"github.com/qfex/cli/internal/protocol"
 )
 
 var daemonCmd = &cobra.Command{
@@ -94,17 +96,37 @@ func runDaemonStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting daemon: %w", err)
 	}
 
-	// Wait for the daemon to be ready
+	// Wait for the daemon socket to be ready
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
 		if cli.IsRunning() {
-			fmt.Printf(`{"status": "started", "pid": %d, "log": %q}`+"\n", proc.Process.Pid, config.LogPath())
-			return nil
+			break
+		}
+	}
+	if !cli.IsRunning() {
+		return fmt.Errorf("daemon did not start in time; check %s", config.LogPath())
+	}
+
+	// If credentials are configured, wait for trade authentication
+	if cfg.HasCredentials() {
+		authDeadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(authDeadline) {
+			resp, err := cli.Send(cmd.Context(), protocol.CmdStatus, nil)
+			if err == nil && resp.OK {
+				var status struct {
+					TradeAuthed bool `json:"trade_authed"`
+				}
+				if json.Unmarshal(resp.Data, &status) == nil && status.TradeAuthed {
+					break
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 
-	return fmt.Errorf("daemon did not start in time; check %s", config.LogPath())
+	fmt.Printf(`{"status": "started", "pid": %d, "log": %q}`+"\n", proc.Process.Pid, config.LogPath())
+	return nil
 }
 
 func runDaemonStop(cmd *cobra.Command, args []string) error {

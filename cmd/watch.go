@@ -19,6 +19,8 @@ var watchCmd = &cobra.Command{
 	Long:  `Subscribe to real-time data streams. Press Ctrl+C to stop.`,
 }
 
+var watchCandleInterval string
+
 func init() {
 	rootCmd.AddCommand(watchCmd)
 
@@ -32,6 +34,26 @@ func init() {
 	watchCmd.AddCommand(makeWatchAccountCmd("balance", "Watch balance updates", protocol.StreamBalance))
 	watchCmd.AddCommand(makeWatchAccountCmd("fills", "Watch fill updates", protocol.StreamFills))
 	watchCmd.AddCommand(makeWatchAccountCmd("orders", "Watch order updates", protocol.StreamOrders))
+
+	candleWatchCmd := &cobra.Command{
+		Use:   "candles <symbol>",
+		Short: "Watch candle updates",
+		Long: `Watch real-time candle (OHLCV) updates for a symbol.
+
+Available intervals: 1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY
+If --interval is omitted, all intervals are streamed.`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			requireDaemon()
+			runWatch(protocol.WatchParams{
+				Stream:   protocol.StreamCandles,
+				Symbol:   args[0],
+				Interval: watchCandleInterval,
+			})
+		},
+	}
+	candleWatchCmd.Flags().StringVar(&watchCandleInterval, "interval", "", "Candle interval (1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY)")
+	watchCmd.AddCommand(candleWatchCmd)
 }
 
 func makeWatchSymbolCmd(use, short, stream string) *cobra.Command {

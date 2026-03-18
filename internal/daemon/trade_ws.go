@@ -139,7 +139,16 @@ func (t *TradeWS) Run(ctx context.Context) {
 }
 
 func (t *TradeWS) connect(ctx context.Context) error {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, t.url, nil)
+	headers, err := auth.RESTHeaders(t.cfg.PublicKey, t.cfg.SecretKey)
+	if err != nil {
+		return fmt.Errorf("auth headers: %w", err)
+	}
+	httpHeaders := make(map[string][]string, len(headers))
+	for k, v := range headers {
+		httpHeaders[k] = []string{v}
+	}
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, t.url, httpHeaders)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
@@ -170,7 +179,6 @@ func (t *TradeWS) connect(ctx context.Context) error {
 		t.pendingMu.Unlock()
 	}()
 
-	// Authenticate
 	if err := t.sendAuth(conn); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
@@ -187,6 +195,7 @@ func (t *TradeWS) connect(ctx context.Context) error {
 		t.dispatch(conn, data)
 	}
 }
+
 
 func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
 	creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey)
@@ -494,27 +503,31 @@ func (t *TradeWS) resolvePending(responseKey, clientOrderID string, data json.Ra
 	return false
 }
 
-// WaitForFinalStatus registers a pending request that resolves on the next
-// non-ACK order_response for the given orderID. Used after an ACK has already
-// been received to await FILLED, CANCELLED, REJECTED, etc.
-func (t *TradeWS) WaitForFinalStatus(ctx context.Context, orderID string, timeout time.Duration) (json.RawMessage, error) {
+// PreRegisterFinal registers a pending request for the terminal order_response
+// for the given clientOrderID before the order is sent. This avoids a race where
+// the terminal status (FILLED, CANCELLED, etc.) arrives before WaitOnFinal is called.
+// The caller must call WaitOnFinal with the returned channel.
+func (t *TradeWS) PreRegisterFinal(clientOrderID string) chan json.RawMessage {
 	p := &pendingRequest{
 		responseKey:   "order_response",
-		clientOrderID: orderID,
+		clientOrderID: clientOrderID,
 		skipIfACK:     true,
 		ch:            make(chan json.RawMessage, 1),
 	}
-
 	t.pendingMu.Lock()
 	t.pending = append(t.pending, p)
 	t.pendingMu.Unlock()
+	return p.ch
+}
 
+// WaitOnFinal waits on a channel returned by PreRegisterFinal.
+func (t *TradeWS) WaitOnFinal(ctx context.Context, ch chan json.RawMessage, timeout time.Duration) (json.RawMessage, error) {
 	defer func() {
 		t.pendingMu.Lock()
 		next := t.pending[:0]
-		for _, x := range t.pending {
-			if x != p {
-				next = append(next, x)
+		for _, p := range t.pending {
+			if p.ch != ch {
+				next = append(next, p)
 			}
 		}
 		t.pending = next
@@ -522,7 +535,7 @@ func (t *TradeWS) WaitForFinalStatus(ctx context.Context, orderID string, timeou
 	}()
 
 	select {
-	case data := <-p.ch:
+	case data := <-ch:
 		if data == nil {
 			return nil, fmt.Errorf("connection closed while waiting for final status")
 		}

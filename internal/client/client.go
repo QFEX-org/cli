@@ -53,7 +53,11 @@ func (c *Client) sendOnConn(ctx context.Context, conn net.Conn, cmd string, para
 		return nil, fmt.Errorf("write: %w", err)
 	}
 
-	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetReadDeadline(deadline)
+	} else {
+		conn.SetReadDeadline(time.Now().Add(35 * time.Second))
+	}
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20)
 	if !scanner.Scan() {

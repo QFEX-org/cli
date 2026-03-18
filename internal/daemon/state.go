@@ -236,7 +236,9 @@ func (s *State) setCandle(c *Candle) {
 		s.candles[c.Symbol] = make(map[string]*Candle)
 	}
 	s.candles[c.Symbol][c.Resolution] = c
+	data := mustMarshal(c)
 	s.mu.Unlock()
+	s.notify("candle", c.Symbol, data)
 }
 
 func (s *State) getCandle(symbol, interval string) *Candle {
@@ -355,10 +357,19 @@ func (s *State) addFill(f *Fill) {
 	s.notify("fills", f.Symbol, mustMarshal(f))
 }
 
-func (s *State) getFills(limit int) []*Fill {
+func (s *State) getFills(limit int, symbol string) []*Fill {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	fills := s.fills
+	if symbol != "" {
+		filtered := make([]*Fill, 0, len(fills))
+		for _, f := range fills {
+			if f.Symbol == symbol {
+				filtered = append(filtered, f)
+			}
+		}
+		fills = filtered
+	}
 	if limit > 0 && len(fills) > limit {
 		fills = fills[len(fills)-limit:]
 	}

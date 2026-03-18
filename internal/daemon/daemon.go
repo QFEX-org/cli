@@ -86,6 +86,12 @@ func (d *Daemon) ensureMDSSubscription(stream, symbol, interval string) error {
 		return d.mds.Subscribe("funding", []string{symbol})
 	case protocol.StreamOpenInterest:
 		return d.mds.Subscribe("open_interest", []string{symbol})
+	case protocol.StreamCandles:
+		intervals := []string{interval}
+		if interval == "" {
+			intervals = []string{"1MIN", "5MINS", "15MINS", "1HOUR", "4HOURS", "1DAY"}
+		}
+		return d.mds.SubscribeCandles([]string{symbol}, intervals)
 	case protocol.StreamPositions, protocol.StreamBalance, protocol.StreamFills, protocol.StreamOrders:
 		// These come from the Trade WS, no MDS subscription needed
 		return nil
@@ -111,6 +117,10 @@ func (d *Daemon) getCurrentValue(stream, symbol, interval string) []byte {
 		}
 	case protocol.StreamFundingRate:
 		if v := d.state.getFundingRate(symbol); v != nil {
+			return mustMarshal(v)
+		}
+	case protocol.StreamCandles:
+		if v := d.state.getCandle(symbol, interval); v != nil {
 			return mustMarshal(v)
 		}
 	case protocol.StreamBalance:
