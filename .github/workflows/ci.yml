@@ -4,11 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "cli/**"
   pull_request:
-    paths:
-      - "cli/**"
 
 jobs:
   build:
@@ -19,16 +15,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: cli/go.mod
+          go-version-file: go.mod
 
       - name: Build
-        working-directory: cli
         run: go build ./...
 
       - name: Vet
-        working-directory: cli
         run: go vet ./...
 
       - name: Test
-        working-directory: cli
         run: go test ./...
