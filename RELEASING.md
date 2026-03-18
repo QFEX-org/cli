@@ -11,8 +11,8 @@ Releases are automated via GoReleaser and GitHub Actions. Pushing a tag triggers
 3. Tag and push:
 
    ```bash
-   git tag cli/v1.2.3
-   git push origin cli/v1.2.3
+   git tag v1.2.3
+   git push origin v1.2.3
    ```
 
 4. GitHub Actions runs the `CLI Release` workflow, which:
@@ -41,19 +41,18 @@ Tags cannot be re-used. To re-release the same logical version:
 
 1. Delete the tag locally and remotely:
    ```bash
-   git tag -d cli/v1.2.3
-   git push origin :refs/tags/cli/v1.2.3
+   git tag -d v1.2.3
+   git push origin :refs/tags/v1.2.3
    ```
 2. Delete the draft/published GitHub Release if one was created.
-3. Re-tag with a patch bump (e.g. `cli/v1.2.4`) instead.
+3. Re-tag with a patch bump (e.g. `v1.2.4`) instead.
 
 ## Local dry run
 
 To test the GoReleaser config without publishing:
 
 ```bash
-cd cli
 goreleaser release --snapshot --clean
 ```
 
-Artifacts are written to `cli/dist/`. Requires [GoReleaser](https://goreleaser.com/install/) installed locally.
+Artifacts are written to `dist/`. Requires [GoReleaser](https://goreleaser.com/install/) installed locally.

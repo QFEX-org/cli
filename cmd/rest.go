@@ -9,8 +9,24 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/qfex/cli/internal/auth"
 )
+
+// apiGetURL makes a GET request to an arbitrary URL and returns the parsed JSON body.
+func apiGetURL(u string, needsAuth bool) json.RawMessage {
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Accept", "application/json")
+	if needsAuth {
+		setAuthHeaders(req)
+	}
+	return doRequest(req)
+}
 
 // apiGet makes a GET request to the REST API and returns the parsed JSON body.
 // If needsAuth is true, HMAC auth headers are added.
@@ -82,6 +98,36 @@ func setAuthHeaders(req *http.Request) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+}
+
+// fetchSymbols returns all active symbol names from /refdata.
+// Used for shell tab-completion in commands that accept a <symbol> argument.
+func fetchSymbols() []string {
+	data := apiGet("/refdata", nil, false)
+	var resp struct {
+		Data []struct {
+			Symbol string `json:"symbol"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil
+	}
+	symbols := make([]string, 0, len(resp.Data))
+	for _, s := range resp.Data {
+		if s.Status == "ACTIVE" {
+			symbols = append(symbols, s.Symbol)
+		}
+	}
+	return symbols
+}
+
+// symbolCompletion is a Cobra ValidArgsFunction that completes symbol names.
+func symbolCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return fetchSymbols(), cobra.ShellCompDirectiveNoFileComp
 }
 
 func doRequest(req *http.Request) json.RawMessage {

@@ -87,9 +87,7 @@ var depositCmd = &cobra.Command{
 
 Also returns available_allowance — the remaining deposit capacity on your account.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireDaemon()
-		requireAuth()
-		sendAndPrint(protocol.CmdGetDepositAddress, nil)
+		printResult(apiGetURL(cfg.BankerURL(), true))
 	},
 }
 

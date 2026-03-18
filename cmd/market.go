@@ -10,6 +10,16 @@ import (
 	"github.com/qfex/cli/internal/protocol"
 )
 
+var symbolsCmd = &cobra.Command{
+	Use:   "symbols",
+	Short: "List all active trading symbols",
+	Run: func(cmd *cobra.Command, args []string) {
+		for _, s := range fetchSymbols() {
+			fmt.Println(s)
+		}
+	},
+}
+
 var marketCmd = &cobra.Command{
 	Use:   "market",
 	Short: "Market data commands",
@@ -33,9 +43,10 @@ var (
 )
 
 var bboCmd = &cobra.Command{
-	Use:   "bbo <symbol>",
-	Short: "Get best bid and offer for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "bbo <symbol>",
+	Short:             "Get best bid and offer for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetBBO, protocol.GetBBOParams{Symbol: args[0]})
@@ -44,8 +55,9 @@ var bboCmd = &cobra.Command{
 
 var orderbookCmd = &cobra.Command{
 	Use:   "orderbook <symbol>",
-	Short: "Get the order book for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Short:             "Get the order book for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetOrderBook, protocol.GetOrderBookParams{
@@ -56,9 +68,10 @@ var orderbookCmd = &cobra.Command{
 }
 
 var tradesCmd = &cobra.Command{
-	Use:   "trades <symbol>",
-	Short: "Get recent public trades for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "trades <symbol>",
+	Short:             "Get recent public trades for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetTrades, protocol.GetTradesParams{
@@ -74,7 +87,8 @@ var candlesCmd = &cobra.Command{
 	Long: `Get the latest candle for a symbol at the specified interval.
 
 Available intervals: 1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY`,
-	Args: cobra.ExactArgs(1),
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		if candleInterval == "" {
@@ -89,9 +103,10 @@ Available intervals: 1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY`,
 }
 
 var markPriceCmd = &cobra.Command{
-	Use:   "mark-price <symbol>",
-	Short: "Get the mark price for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "mark-price <symbol>",
+	Short:             "Get the mark price for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetMarkPrice, protocol.GetMarkPriceParams{Symbol: args[0]})
@@ -99,9 +114,10 @@ var markPriceCmd = &cobra.Command{
 }
 
 var fundingRateCmd = &cobra.Command{
-	Use:   "funding-rate <symbol>",
-	Short: "Get the funding rate for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "funding-rate <symbol>",
+	Short:             "Get the funding rate for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetFundingRate, protocol.GetFundingRateParams{Symbol: args[0]})
@@ -109,9 +125,10 @@ var fundingRateCmd = &cobra.Command{
 }
 
 var openInterestCmd = &cobra.Command{
-	Use:   "open-interest <symbol>",
-	Short: "Get open interest for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "open-interest <symbol>",
+	Short:             "Get open interest for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetOpenInterest, protocol.GetOpenInterestParams{Symbol: args[0]})
@@ -140,9 +157,10 @@ var metricsCmd = &cobra.Command{
 }
 
 var candlesHistoryCmd = &cobra.Command{
-	Use:   "candles-history <symbol>",
-	Short: "Get OHLCV candle history for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "candles-history <symbol>",
+	Short:             "Get OHLCV candle history for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketResolution == "" || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --resolution, --from, --to")
@@ -157,9 +175,10 @@ var candlesHistoryCmd = &cobra.Command{
 }
 
 var fundingHistoryCmd = &cobra.Command{
-	Use:   "funding-history <symbol>",
-	Short: "Get historic funding rates for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "funding-history <symbol>",
+	Short:             "Get historic funding rates for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketIntervalM == 0 || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --interval, --from, --to")
@@ -174,9 +193,10 @@ var fundingHistoryCmd = &cobra.Command{
 }
 
 var oiHistoryCmd = &cobra.Command{
-	Use:   "oi-history <symbol>",
-	Short: "Get open interest history for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "oi-history <symbol>",
+	Short:             "Get open interest history for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketIntervalM == 0 || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --interval, --from, --to")
@@ -227,9 +247,10 @@ var settlementPricesCmd = &cobra.Command{
 }
 
 var longShortCmd = &cobra.Command{
-	Use:   "long-short <symbol>",
-	Short: "Get long/short user ratio history for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "long-short <symbol>",
+	Short:             "Get long/short user ratio history for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketInterval == "" || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --interval, --from, --to")
@@ -244,9 +265,10 @@ var longShortCmd = &cobra.Command{
 }
 
 var takerVolumeCmd = &cobra.Command{
-	Use:   "taker-volume <symbol>",
-	Short: "Get taker volume history for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "taker-volume <symbol>",
+	Short:             "Get taker volume history for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketIntervalM == 0 || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --interval, --from, --to")
@@ -261,9 +283,10 @@ var takerVolumeCmd = &cobra.Command{
 }
 
 var underlierCmd = &cobra.Command{
-	Use:   "underlier <symbol>",
-	Short: "Get underlier OHLC history for a symbol",
-	Args:  cobra.ExactArgs(1),
+	Use:               "underlier <symbol>",
+	Short:             "Get underlier OHLC history for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if marketInterval == "" || marketFrom == "" || marketTo == "" {
 			return fmt.Errorf("required: --interval, --from, --to")
@@ -286,6 +309,8 @@ func init() {
 	marketCmd.AddCommand(markPriceCmd)
 	marketCmd.AddCommand(fundingRateCmd)
 	marketCmd.AddCommand(openInterestCmd)
+
+	marketCmd.AddCommand(symbolsCmd)
 
 	// REST commands (no daemon required)
 	marketCmd.AddCommand(refdataCmd)

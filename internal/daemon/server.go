@@ -7,14 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"time"
 
-	"github.com/qfex/cli/internal/auth"
 	"github.com/qfex/cli/internal/protocol"
 )
 
@@ -320,9 +317,6 @@ func (s *Server) dispatch(ctx context.Context, req *protocol.Request) protocol.R
 			return errResp(err.Error())
 		}
 		return s.handleGetUserTrades(ctx, p)
-
-	case protocol.CmdGetDepositAddress:
-		return s.handleGetDepositAddress(ctx)
 
 	case protocol.CmdCancelOnDisconnect:
 		var p protocol.CancelOnDisconnectParams
@@ -796,40 +790,6 @@ func (s *Server) handleGetUserTrades(ctx context.Context, p protocol.GetUserTrad
 	return okResp(data)
 }
 
-func (s *Server) handleGetDepositAddress(ctx context.Context) protocol.Response {
-	if !s.d.cfg.HasCredentials() {
-		return errResp("credentials required: set public_key and secret_key in config")
-	}
-
-	headers, err := auth.RESTHeaders(s.d.cfg.PublicKey, s.d.cfg.SecretKey)
-	if err != nil {
-		return errResp(fmt.Sprintf("building auth headers: %v", err))
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.d.cfg.BankerURL(), nil)
-	if err != nil {
-		return errResp(fmt.Sprintf("building request: %v", err))
-	}
-	req.Header.Set("Accept", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return errResp(fmt.Sprintf("request failed: %v", err))
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return errResp(fmt.Sprintf("reading response: %v", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		return errResp(fmt.Sprintf("banker returned %d: %s", resp.StatusCode, string(body)))
-	}
-	return okResp(json.RawMessage(body))
-}
 
 func (s *Server) handleCancelOnDisconnect(ctx context.Context, p protocol.CancelOnDisconnectParams) protocol.Response {
 	cmd := map[string]any{
