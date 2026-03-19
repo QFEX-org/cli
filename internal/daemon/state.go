@@ -64,6 +64,13 @@ type OpenInterest struct {
 	Time         time.Time `json:"time"`
 }
 
+type UnderlierPrice struct {
+	Symbol string    `json:"symbol"`
+	Price  string    `json:"price"`
+	Time   time.Time `json:"time"`
+	Source string    `json:"source,omitempty"`
+}
+
 // ---- Account types ----
 
 type Balance struct {
@@ -150,13 +157,14 @@ type State struct {
 	mu sync.RWMutex
 
 	// MDS
-	orderBooks    map[string]*OrderBook
-	bbos          map[string]*BBO
-	recentTrades  map[string][]*PublicTrade
-	candles       map[string]map[string]*Candle // symbol → interval → candle
-	markPrices    map[string]*MarkPrice
-	fundingRates  map[string]*FundingRate
-	openInterests map[string]*OpenInterest
+	orderBooks      map[string]*OrderBook
+	bbos            map[string]*BBO
+	recentTrades    map[string][]*PublicTrade
+	candles         map[string]map[string]*Candle // symbol → interval → candle
+	markPrices      map[string]*MarkPrice
+	fundingRates    map[string]*FundingRate
+	openInterests   map[string]*OpenInterest
+	underlierPrices map[string]*UnderlierPrice
 
 	// Trade WS
 	positions  map[string]*Position
@@ -175,9 +183,10 @@ func newState() *State {
 		bbos:          make(map[string]*BBO),
 		recentTrades:  make(map[string][]*PublicTrade),
 		candles:       make(map[string]map[string]*Candle),
-		markPrices:    make(map[string]*MarkPrice),
-		fundingRates:  make(map[string]*FundingRate),
-		openInterests: make(map[string]*OpenInterest),
+		markPrices:      make(map[string]*MarkPrice),
+		fundingRates:    make(map[string]*FundingRate),
+		openInterests:   make(map[string]*OpenInterest),
+		underlierPrices: make(map[string]*UnderlierPrice),
 		positions:     make(map[string]*Position),
 		openOrders:    make(map[string]*Order),
 	}
@@ -286,6 +295,19 @@ func (s *State) getOpenInterest(symbol string) *OpenInterest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.openInterests[symbol]
+}
+
+func (s *State) setUnderlierPrice(u *UnderlierPrice) {
+	s.mu.Lock()
+	s.underlierPrices[u.Symbol] = u
+	s.mu.Unlock()
+	s.notify("underlier", u.Symbol, mustMarshal(u))
+}
+
+func (s *State) getUnderlierPrice(symbol string) *UnderlierPrice {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.underlierPrices[symbol]
 }
 
 func (s *State) setBalance(b *Balance) {

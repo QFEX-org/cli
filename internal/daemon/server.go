@@ -205,6 +205,13 @@ func (s *Server) dispatch(ctx context.Context, req *protocol.Request) protocol.R
 		}
 		return s.handleGetOpenInterest(p)
 
+	case protocol.CmdGetUnderlierPrice:
+		var p protocol.GetUnderlierPriceParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return errResp(err.Error())
+		}
+		return s.handleGetUnderlierPrice(p)
+
 	// ---- Orders ----
 	case protocol.CmdPlaceOrder:
 		var p protocol.PlaceOrderParams
@@ -467,6 +474,23 @@ func (s *Server) handleGetOpenInterest(p protocol.GetOpenInterestParams) protoco
 		return errResp(fmt.Sprintf("no open interest data for %s", p.Symbol))
 	}
 	return okResp(mustMarshal(oi))
+}
+
+func (s *Server) handleGetUnderlierPrice(p protocol.GetUnderlierPriceParams) protocol.Response {
+	u := s.d.state.getUnderlierPrice(p.Symbol)
+	if u == nil {
+		s.d.mds.Subscribe("underlier", []string{p.Symbol})
+		for i := 0; i < 20; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if u = s.d.state.getUnderlierPrice(p.Symbol); u != nil {
+				break
+			}
+		}
+	}
+	if u == nil {
+		return errResp(fmt.Sprintf("no underlier price data for %s", p.Symbol))
+	}
+	return okResp(mustMarshal(u))
 }
 
 func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderParams) protocol.Response {

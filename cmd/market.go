@@ -284,6 +284,17 @@ var takerVolumeCmd = &cobra.Command{
 
 var underlierCmd = &cobra.Command{
 	Use:               "underlier <symbol>",
+	Short:             "Get the current underlier price for a symbol",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: symbolCompletion,
+	Run: func(cmd *cobra.Command, args []string) {
+		requireDaemon()
+		sendAndPrint(protocol.CmdGetUnderlierPrice, protocol.GetUnderlierPriceParams{Symbol: args[0]})
+	},
+}
+
+var underlierHistoryCmd = &cobra.Command{
+	Use:               "underlier-history <symbol>",
 	Short:             "Get underlier OHLC history for a symbol",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: symbolCompletion,
@@ -323,6 +334,7 @@ func init() {
 	marketCmd.AddCommand(longShortCmd)
 	marketCmd.AddCommand(takerVolumeCmd)
 	marketCmd.AddCommand(underlierCmd)
+	marketCmd.AddCommand(underlierHistoryCmd)
 
 	orderbookCmd.Flags().IntVar(&marketDepth, "depth", 0, "Number of levels to show (0 = all)")
 	tradesCmd.Flags().IntVar(&marketLimit, "limit", 20, "Number of trades to show")
@@ -358,7 +370,7 @@ func init() {
 	takerVolumeCmd.Flags().StringVar(&marketFrom, "from", "", "Start time in ISO 8601")
 	takerVolumeCmd.Flags().StringVar(&marketTo, "to", "", "End time in ISO 8601")
 
-	underlierCmd.Flags().StringVar(&marketInterval, "interval", "", "Time interval (e.g. 1h, 4h, 1d)")
-	underlierCmd.Flags().StringVar(&marketFrom, "from", "", "Start time in ISO 8601")
-	underlierCmd.Flags().StringVar(&marketTo, "to", "", "End time in ISO 8601")
+	underlierHistoryCmd.Flags().StringVar(&marketInterval, "interval", "", "Time interval (e.g. 1h, 4h, 1d)")
+	underlierHistoryCmd.Flags().StringVar(&marketFrom, "from", "", "Start time in ISO 8601")
+	underlierHistoryCmd.Flags().StringVar(&marketTo, "to", "", "End time in ISO 8601")
 }

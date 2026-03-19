@@ -256,13 +256,13 @@ func (m *MDSWS) processMessage(msg *mdsMessage) {
 		m.state.setOpenInterest(oi)
 
 	case "underlier":
-		// Store as mark price
-		mp := &MarkPrice{
+		u := &UnderlierPrice{
 			Symbol: msg.Symbol,
 			Price:  msg.Price,
 			Time:   t,
+			Source: msg.Source,
 		}
-		m.state.setMarkPrice(mp)
+		m.state.setUnderlierPrice(u)
 	}
 }
 

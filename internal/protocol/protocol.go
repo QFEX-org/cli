@@ -5,13 +5,14 @@ import "encoding/json"
 // IPC command names (CLI → Daemon)
 const (
 	// Market data
-	CmdGetBBO           = "get_bbo"
-	CmdGetOrderBook     = "get_orderbook"
-	CmdGetTrades        = "get_trades"
-	CmdGetCandles       = "get_candles"
-	CmdGetMarkPrice     = "get_mark_price"
-	CmdGetFundingRate   = "get_funding_rate"
-	CmdGetOpenInterest  = "get_open_interest"
+	CmdGetBBO             = "get_bbo"
+	CmdGetOrderBook       = "get_orderbook"
+	CmdGetTrades          = "get_trades"
+	CmdGetCandles         = "get_candles"
+	CmdGetMarkPrice       = "get_mark_price"
+	CmdGetFundingRate     = "get_funding_rate"
+	CmdGetOpenInterest    = "get_open_interest"
+	CmdGetUnderlierPrice  = "get_underlier_price"
 
 	// Orders
 	CmdPlaceOrder   = "place_order"
@@ -64,6 +65,7 @@ const (
 	StreamFundingRate  = "funding_rate"
 	StreamOpenInterest = "open_interest"
 	StreamCandles      = "candle"
+	StreamUnderlier    = "underlier"
 )
 
 // Request is a message from CLI to daemon (newline-delimited JSON).
@@ -116,6 +118,10 @@ type GetFundingRateParams struct {
 }
 
 type GetOpenInterestParams struct {
+	Symbol string `json:"symbol"`
+}
+
+type GetUnderlierPriceParams struct {
 	Symbol string `json:"symbol"`
 }
 

@@ -86,6 +86,8 @@ func (d *Daemon) ensureMDSSubscription(stream, symbol, interval string) error {
 		return d.mds.Subscribe("funding", []string{symbol})
 	case protocol.StreamOpenInterest:
 		return d.mds.Subscribe("open_interest", []string{symbol})
+	case protocol.StreamUnderlier:
+		return d.mds.Subscribe("underlier", []string{symbol})
 	case protocol.StreamCandles:
 		intervals := []string{interval}
 		if interval == "" {
@@ -117,6 +119,10 @@ func (d *Daemon) getCurrentValue(stream, symbol, interval string) []byte {
 		}
 	case protocol.StreamFundingRate:
 		if v := d.state.getFundingRate(symbol); v != nil {
+			return mustMarshal(v)
+		}
+	case protocol.StreamUnderlier:
+		if v := d.state.getUnderlierPrice(symbol); v != nil {
 			return mustMarshal(v)
 		}
 	case protocol.StreamCandles:

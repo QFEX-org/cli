@@ -29,6 +29,7 @@ func init() {
 	watchCmd.AddCommand(makeWatchSymbolCmd("trades", "Watch public trades", protocol.StreamTrades))
 	watchCmd.AddCommand(makeWatchSymbolCmd("mark-price", "Watch mark price", protocol.StreamMarkPrice))
 	watchCmd.AddCommand(makeWatchSymbolCmd("funding-rate", "Watch funding rate", protocol.StreamFundingRate))
+	watchCmd.AddCommand(makeWatchSymbolCmd("underlier", "Watch underlier price", protocol.StreamUnderlier))
 
 	watchCmd.AddCommand(makeWatchAccountCmd("positions", "Watch position updates", protocol.StreamPositions))
 	watchCmd.AddCommand(makeWatchAccountCmd("balance", "Watch balance updates", protocol.StreamBalance))
