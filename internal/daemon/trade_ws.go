@@ -141,13 +141,17 @@ func (t *TradeWS) Run(ctx context.Context) {
 }
 
 func (t *TradeWS) connect(ctx context.Context) error {
-	headers, err := auth.RESTHeaders(t.cfg.PublicKey, t.cfg.SecretKey)
-	if err != nil {
-		return fmt.Errorf("auth headers: %w", err)
-	}
 	httpHeaders := http.Header{"User-Agent": {build.UserAgent()}}
-	for k, v := range headers {
-		httpHeaders[k] = []string{v}
+	if t.cfg.HasJWT() {
+		httpHeaders["Authorization"] = []string{"Bearer " + t.cfg.AccessToken}
+	} else {
+		headers, err := auth.RESTHeaders(t.cfg.PublicKey, t.cfg.SecretKey)
+		if err != nil {
+			return fmt.Errorf("auth headers: %w", err)
+		}
+		for k, v := range headers {
+			httpHeaders[k] = []string{v}
+		}
 	}
 
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, t.url, httpHeaders)
@@ -200,6 +204,15 @@ func (t *TradeWS) connect(ctx context.Context) error {
 
 
 func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
+	if t.cfg.HasJWT() {
+		msg := map[string]any{
+			"type": "auth",
+			"params": map[string]any{
+				"jwt": t.cfg.AccessToken,
+			},
+		}
+		return conn.WriteJSON(msg)
+	}
 	creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey)
 	if err != nil {
 		return err

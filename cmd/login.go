@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,14 +12,22 @@ import (
 	"golang.org/x/term"
 
 	"github.com/qfex/cli/internal/config"
+	"github.com/qfex/cli/internal/oauth"
 )
 
-var loginRestart bool
+var loginAPIKey bool
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Save your API credentials",
-	Long: `Save your QFEX API public key and secret key to the local config file.
+	Short: "Authenticate with QFEX",
+	Long: `Authenticate with QFEX.
+
+By default, opens your browser to log in with your QFEX account (Google / email).
+The access token is saved locally and used for all subsequent commands.
+
+To use API keys (public key + secret key) instead, pass --api-key:
+
+  qfex login --api-key
 
 To generate API keys:
   1. Sign in at https://qfex.com and select your profile (bottom right).
@@ -28,77 +37,128 @@ To generate API keys:
 
 Full instructions: https://docs.qfex.com/api-reference/introduction`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		reader := bufio.NewReader(os.Stdin)
-
-		fmt.Print("Environment (prod/uat) [prod]: ")
-		envInput, err := reader.ReadString('\n')
-		if err != nil {
-			return err
+		if loginAPIKey {
+			return runAPIKeyLogin(cmd, args)
 		}
-		env := strings.TrimSpace(envInput)
-		if env == "" {
-			env = "prod"
-		}
-		if env != "prod" && env != "uat" {
-			return fmt.Errorf("environment must be 'prod' or 'uat'")
-		}
-
-		fmt.Print("Public key: ")
-		publicKey, err := reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		publicKey = strings.TrimSpace(publicKey)
-		if publicKey == "" {
-			return fmt.Errorf("public key cannot be empty")
-		}
-
-		fmt.Print("Secret key: ")
-		secretBytes, err := term.ReadPassword(int(syscall.Stdin))
-		fmt.Println()
-		if err != nil {
-			return err
-		}
-		secretKey := strings.TrimSpace(string(secretBytes))
-		if secretKey == "" {
-			return fmt.Errorf("secret key cannot be empty")
-		}
-
-		cfg.PublicKey = publicKey
-		cfg.SecretKey = secretKey
-		if env == "uat" {
-			cfg.Env = "uat"
-		} else {
-			cfg.Env = ""
-		}
-		if err := config.Save(cfg); err != nil {
-			return fmt.Errorf("saving config: %w", err)
-		}
-
-		fmt.Printf("Logged in with public key %s (%s)\n", publicKey, env)
-		fmt.Printf("Config saved to %s\n", config.Path())
-		if cli.IsRunning() {
-			if loginRestart {
-				fmt.Println("Restarting daemon...")
-				return runDaemonRestart(cmd, args)
-			}
-			fmt.Print("Daemon is running. Restart now to apply credentials? (y/N): ")
-			answer, _ := reader.ReadString('\n')
-			if strings.ToLower(strings.TrimSpace(answer)) == "y" {
-				fmt.Println("Restarting daemon...")
-				return runDaemonRestart(cmd, args)
-			}
-		}
-		return nil
+		return runBrowserLogin(cmd, args)
 	},
+}
+
+func runBrowserLogin(cmd *cobra.Command, args []string) error {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Environment (prod/uat) [prod]: ")
+	envInput, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	env := strings.TrimSpace(envInput)
+	if env == "" {
+		env = "prod"
+	}
+	if env != "prod" && env != "uat" {
+		return fmt.Errorf("environment must be 'prod' or 'uat'")
+	}
+
+	supabaseURL := oauth.ProdSupabaseURL
+	clientID := oauth.ProdClientID
+	if env == "uat" {
+		supabaseURL = oauth.UATSupabaseURL
+		clientID = oauth.UATClientID
+	}
+
+	tokens, err := oauth.RunBrowserFlow(context.Background(), oauth.Config{
+		SupabaseURL: supabaseURL,
+		ClientID:    clientID,
+	})
+	if err != nil {
+		return err
+	}
+
+	cfg.AccessToken = tokens.AccessToken
+	cfg.RefreshToken = tokens.RefreshToken
+	// Clear any stale API key credentials.
+	cfg.PublicKey = ""
+	cfg.SecretKey = ""
+	if env == "uat" {
+		cfg.Env = "uat"
+	} else {
+		cfg.Env = ""
+	}
+
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	fmt.Printf("Logged in (%s). Config saved to %s\n", env, config.Path())
+	fmt.Println("Restarting daemon...")
+	return runDaemonRestart(cmd, args)
+}
+
+func runAPIKeyLogin(cmd *cobra.Command, args []string) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Print("Environment (prod/uat) [prod]: ")
+	envInput, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	env := strings.TrimSpace(envInput)
+	if env == "" {
+		env = "prod"
+	}
+	if env != "prod" && env != "uat" {
+		return fmt.Errorf("environment must be 'prod' or 'uat'")
+	}
+
+	fmt.Print("Public key: ")
+	publicKey, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	publicKey = strings.TrimSpace(publicKey)
+	if publicKey == "" {
+		return fmt.Errorf("public key cannot be empty")
+	}
+
+	fmt.Print("Secret key: ")
+	secretBytes, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		return err
+	}
+	secretKey := strings.TrimSpace(string(secretBytes))
+	if secretKey == "" {
+		return fmt.Errorf("secret key cannot be empty")
+	}
+
+	cfg.PublicKey = publicKey
+	cfg.SecretKey = secretKey
+	// Clear any stale JWT credentials.
+	cfg.AccessToken = ""
+	cfg.RefreshToken = ""
+	if env == "uat" {
+		cfg.Env = "uat"
+	} else {
+		cfg.Env = ""
+	}
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	fmt.Printf("Logged in with public key %s (%s)\n", publicKey, env)
+	fmt.Printf("Config saved to %s\n", config.Path())
+	fmt.Println("Restarting daemon...")
+	return runDaemonRestart(cmd, args)
 }
 
 var logoutCmd = &cobra.Command{
 	Use:   "logout",
-	Short: "Remove API credentials from the local config",
+	Short: "Remove credentials from the local config",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg.PublicKey = ""
 		cfg.SecretKey = ""
+		cfg.AccessToken = ""
+		cfg.RefreshToken = ""
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("saving config: %w", err)
 		}
@@ -111,5 +171,5 @@ func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
 
-	loginCmd.Flags().BoolVar(&loginRestart, "restart", false, "Restart the daemon after saving credentials")
+	loginCmd.Flags().BoolVar(&loginAPIKey, "api-key", false, "Use API key login (public key + secret key) instead of browser")
 }

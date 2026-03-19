@@ -28,16 +28,19 @@ var rootCmd = &cobra.Command{
 			env = "UAT (qfex.io)"
 		}
 		fmt.Fprintf(os.Stderr, "Environment: %s\n", env)
-		if cfg.HasCredentials() {
+		if cfg.HasJWT() {
+			fmt.Fprintf(os.Stderr, "Logged in\n\n")
+		} else if cfg.PublicKey != "" {
 			fmt.Fprintf(os.Stderr, "Logged in   public key: %s\n\n", cfg.PublicKey)
 		} else {
-			fmt.Fprintf(os.Stderr, "Not logged in  run 'qfex login' to add your API credentials\n\n")
+			fmt.Fprintf(os.Stderr, "Not logged in  run 'qfex login' to authenticate\n\n")
 		}
 		cmd.Help()
 	},
 }
 
 func Execute() {
+	rootCmd.SilenceUsage = true
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -98,10 +101,14 @@ func sendAndPrint(cmd string, params any) {
 	printResult(data)
 }
 
-// requireDaemon checks daemon is running and fatals otherwise.
+// requireDaemon ensures the daemon is running, starting it automatically if needed.
 func requireDaemon() {
-	if !cli.IsRunning() {
-		fmt.Fprintln(os.Stderr, "Error: qfex daemon is not running\nRun 'qfex daemon start' to start it")
+	if cli.IsRunning() {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Starting daemon...")
+	if err := runDaemonStart(rootCmd, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to start daemon: %v\n", err)
 		os.Exit(1)
 	}
 }

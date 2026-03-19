@@ -12,6 +12,11 @@ type Config struct {
 	PublicKey string `yaml:"public_key"`
 	SecretKey string `yaml:"secret_key"`
 
+	// JWT auth — set by `qfex login` (browser OAuth flow).
+	// Takes precedence over PublicKey/SecretKey when present.
+	AccessToken  string `yaml:"access_token,omitempty"`
+	RefreshToken string `yaml:"refresh_token,omitempty"`
+
 	// Env selects the target environment: "prod" (default) or "uat".
 	// UAT is identical to prod but uses qfex.io instead of qfex.com.
 	Env string `yaml:"env,omitempty"`
@@ -55,7 +60,12 @@ func (c *Config) IsUAT() bool {
 }
 
 func (c *Config) HasCredentials() bool {
-	return c.PublicKey != "" && c.SecretKey != ""
+	return c.HasJWT() || (c.PublicKey != "" && c.SecretKey != "")
+}
+
+// HasJWT returns true when a JWT access token is stored (browser login).
+func (c *Config) HasJWT() bool {
+	return c.AccessToken != ""
 }
 
 func Dir() string {

@@ -57,10 +57,7 @@ allowed_programs = ["qfex"]
 No login required for market data:
 
 ```sh
-# Start the daemon
-qfex daemon start
-
-# View market data — no credentials needed
+# View market data — no credentials needed, daemon starts automatically
 qfex market symbols
 qfex market bbo AAPL-USD
 qfex market orderbook AAPL-USD
@@ -70,14 +67,11 @@ qfex market trades AAPL-USD
 To place orders or view account data, log in first:
 
 ```sh
-qfex login
-qfex daemon restart   # applies credentials
+qfex login   # opens browser — or use --api-key for key-based login
 
 qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1
 qfex account balance
 ```
-
-To generate API keys: sign in at [qfex.com](https://qfex.com), navigate to Developer Settings, and click "Generate public and secret API Keys". Full instructions at [docs.qfex.com/api-reference/introduction](https://docs.qfex.com/api-reference/introduction).
 
 ---
 
@@ -108,17 +102,55 @@ The daemon maintains persistent WebSocket connections and caches state. The CLI 
 
 ---
 
-## Configuration
+## Authentication
 
-Run `qfex login` to set credentials interactively. This saves to `~/.config/qfex/config.yaml`.
+### Browser login (recommended)
 
-```yaml
-public_key: qfex_pub_xxxxx     # Required for trading
-secret_key: qfex_secret_xxxxx  # Required for trading
-env: prod                      # "prod" (default) or "uat"
+```sh
+qfex login
 ```
 
-Market data commands work without credentials. Trading commands (orders, positions, balance) require credentials.
+Opens your browser to sign in with your QFEX account (Google or email). After authorising, the CLI receives a JWT and saves it locally. The daemon is restarted automatically to apply the new credentials.
+
+### API key login
+
+```sh
+qfex login --api-key
+```
+
+Prompts for a public key and secret key instead of opening the browser. Use this in headless environments or if you prefer key-based auth.
+
+To generate API keys: sign in at [qfex.com](https://qfex.com), navigate to Developer Settings, and click "Generate public and secret API Keys". Full instructions at [docs.qfex.com/api-reference/introduction](https://docs.qfex.com/api-reference/introduction).
+
+### Logout
+
+```sh
+qfex logout
+```
+
+Removes all stored credentials (JWT or API keys) from the local config.
+
+---
+
+## Configuration
+
+Credentials are saved to `~/.config/qfex/config.yaml` (mode `0600`). After a browser login:
+
+```yaml
+access_token: eyJhbGci...   # JWT — set by browser login
+refresh_token: ...
+env: prod                   # "prod" (default) or "uat"
+```
+
+After an API key login:
+
+```yaml
+public_key: qfex_pub_xxxxx
+secret_key: qfex_secret_xxxxx
+env: prod
+```
+
+Market data commands work without any credentials. Trading commands (orders, positions, balance) require login.
 
 ### Environments
 
@@ -127,20 +159,14 @@ QFEX runs two environments:
 - **Production** — [qfex.com](https://qfex.com). Real funds.
 - **UAT** — [qfex.io](https://qfex.io). Identical API and behaviour, separate exchange instance with no real funds. Use this for testing strategies, integrations, and order flow before going live.
 
-The CLI connects to production by default. To use UAT, select it during `qfex login` or set `env: uat` in the config file.
+The CLI connects to production by default. Select the environment during `qfex login`.
 
 | `env` | Trade WebSocket | MDS WebSocket |
 |-------|----------------|---------------|
 | `prod` (default) | `wss://trade.qfex.com/` | `wss://mds.qfex.com/` |
 | `uat` | `wss://trade.qfex.io/` | `wss://mds.qfex.io/` |
 
-To switch environments, run `qfex login` again or edit the config file and restart the daemon:
-
-```sh
-qfex daemon restart
-qfex daemon status
-# "env": "uat", "trade_url": "wss://trade.qfex.io/"
-```
+To switch environments, run `qfex login` again.
 
 **Paths used:**
 
@@ -530,22 +556,19 @@ qfex watch bbo AAPL-USD | jq '.bid[0][0]'
 
 ## For AI Agents
 
-The daemon must be running before any other command works. A minimal agent workflow:
+The daemon starts automatically when needed. A minimal agent workflow:
 
 ```sh
-# 1. Start daemon (idempotent — safe to call even if already running)
-qfex daemon start
+# 1. Issue commands — daemon starts automatically if not running
+# Market data needs no credentials:
+qfex market bbo AAPL-USD
+# Trading requires credentials (run qfex login once — daemon restarts automatically):
+qfex order place --symbol AAPL-USD --side BUY --type LIMIT --tif GTC --qty 1 --price 200
 
-# 2. Check it's ready (trade_authed only required for trading)
+# 2. Check daemon status if needed (trade_authed only required for trading)
 qfex daemon status
 # Market data only: {"mds_connected": true, "running": true}
 # With credentials: {"mds_connected": true, "running": true, "trade_authed": true}
-
-# 3. Issue commands — all output is JSON
-# Market data needs no credentials:
-qfex market bbo AAPL-USD
-# Trading requires credentials (qfex login + daemon restart):
-qfex order place --symbol AAPL-USD --side BUY --type LIMIT --tif GTC --qty 1 --price 200
 
 # 4. Parse responses with jq or your language's JSON library
 qfex market bbo AAPL-USD | jq '{bid: .bid[0][0], ask: .ask[0][0]}'
@@ -610,7 +633,7 @@ cat ~/.local/share/qfex/daemon.log
 ```
 
 **Not authenticated (trading commands fail):**
-- Run `qfex login` to set credentials, then `qfex daemon restart`
+- Run `qfex login` — the daemon restarts automatically with the new credentials
 - Run `qfex daemon status` — `trade_authed` should be `true`
 
 **Stale socket (daemon crashed):**

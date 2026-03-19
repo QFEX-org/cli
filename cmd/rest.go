@@ -92,6 +92,10 @@ func apiStream(path string, params url.Values, needsAuth bool) {
 }
 
 func setAuthHeaders(req *http.Request) {
+	if cfg.HasJWT() {
+		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
+		return
+	}
 	headers, err := auth.RESTHeaders(cfg.PublicKey, cfg.SecretKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating auth headers: %v\n", err)
