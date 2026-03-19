@@ -97,16 +97,14 @@ func RunBrowserFlow(ctx context.Context, cfg Config) (Tokens, error) {
 		q := r.URL.Query()
 		if oauthErr := q.Get("error"); oauthErr != "" {
 			desc := q.Get("error_description")
+			if desc == "" {
+				desc = oauthErr
+			}
 			select {
-			case failCh <- fmt.Errorf("login denied: %s: %s", oauthErr, desc):
+			case failCh <- fmt.Errorf("login failed: %s", desc):
 			default:
 			}
-			renderPage(w, http.StatusBadRequest, pageData{
-				PageTitle:   "QFEX CLI login failed",
-				Title:       "Login failed",
-				Description: oauthErr,
-				Footer:      "You may close this tab and retry in your terminal.",
-			})
+			renderFailPage(w, desc)
 			return
 		}
 		if q.Get("state") != state {
@@ -114,12 +112,7 @@ func RunBrowserFlow(ctx context.Context, cfg Config) (Tokens, error) {
 			case failCh <- fmt.Errorf("state mismatch — possible CSRF, please retry"):
 			default:
 			}
-			renderPage(w, http.StatusBadRequest, pageData{
-				PageTitle:   "QFEX CLI login failed",
-				Title:       "Login failed",
-				Description: "Invalid state parameter — possible CSRF attack. Please retry.",
-				Footer:      "You may close this tab.",
-			})
+			renderFailPage(w, "This login link has already been used or is invalid. Please run qfex login again.")
 			return
 		}
 		code := q.Get("code")
@@ -128,12 +121,7 @@ func RunBrowserFlow(ctx context.Context, cfg Config) (Tokens, error) {
 			case failCh <- fmt.Errorf("no authorization code in callback"):
 			default:
 			}
-			renderPage(w, http.StatusBadRequest, pageData{
-				PageTitle:   "QFEX CLI login failed",
-				Title:       "Login failed",
-				Description: "No authorization code returned.",
-				Footer:      "You may close this tab and retry in your terminal.",
-			})
+			renderFailPage(w, "No authorization code was returned. Please run qfex login again.")
 			return
 		}
 		select {
@@ -252,6 +240,15 @@ type pageData struct {
 	Title       string
 	Description string
 	Footer      string
+}
+
+func renderFailPage(w http.ResponseWriter, description string) {
+	renderPage(w, http.StatusBadRequest, pageData{
+		PageTitle:   "QFEX CLI login failed",
+		Title:       "Log in to QFEX CLI failed",
+		Description: description,
+		Footer:      "You may close this tab and run qfex login again to retry.",
+	})
 }
 
 func renderPage(w http.ResponseWriter, statusCode int, data pageData) {
