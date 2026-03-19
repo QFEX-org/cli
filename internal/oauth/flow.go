@@ -21,31 +21,21 @@ const (
 	callbackPath = "/callback"
 
 	// CallbackPort is the fixed local port for the OAuth redirect.
-	// Both the prod and UAT Supabase OAuth clients must have
-	// http://localhost:57423/callback registered as an allowed redirect URI.
+	// http://localhost:57423/callback must be registered as an allowed redirect URI.
 	CallbackPort = 57423
 
-	// ProdSupabaseURL is the Supabase project URL for the production environment.
-	ProdSupabaseURL = "https://verify.qfex.com"
+	ProdAuthURL = "https://verify.qfex.com"
+	UATAuthURL  = "https://verify.qfex.io"
 
-	// UATSupabaseURL is the Supabase project URL for the UAT environment.
-	// TODO: set to your UAT Supabase project URL.
-	UATSupabaseURL = "https://verify.qfex.io"
-
-	// ProdClientID is the Supabase OAuth client ID for the CLI in production.
-	// TODO: set to your prod CLI OAuth app client_id.
 	ProdClientID = "885ac1cf-8cc1-4878-8ece-5d7c379ea4d7"
-
-	// UATClientID is the Supabase OAuth client ID for the CLI in UAT.
-	// TODO: set to your UAT CLI OAuth app client_id.
-	UATClientID = "6557526d-5249-44f0-992e-791942c0b3d4"
+	UATClientID  = "6557526d-5249-44f0-992e-791942c0b3d4"
 )
 
 // Config holds the OAuth parameters for a browser login flow.
 type Config struct {
-	SupabaseURL string
-	ClientID    string
-	// Scopes is optional; leave nil for default Supabase OIDC scopes.
+	AuthURL  string
+	ClientID string
+	// Scopes is optional; leave nil for default scopes.
 	Scopes []string
 }
 
@@ -57,7 +47,7 @@ type Tokens struct {
 	ExpiresIn int
 }
 
-// RunBrowserFlow performs a PKCE authorization-code flow against Supabase.
+// RunBrowserFlow performs a PKCE authorization-code flow.
 //
 // It:
 //  1. Generates a PKCE state + code verifier/challenge.
@@ -66,13 +56,11 @@ type Tokens struct {
 //  4. Waits up to 5 minutes for the OAuth callback.
 //  5. Exchanges the authorization code for access + refresh tokens.
 func RunBrowserFlow(ctx context.Context, cfg Config) (Tokens, error) {
-	if cfg.SupabaseURL == "" {
-		return Tokens{}, fmt.Errorf("Supabase URL not configured for this environment — " +
-			"set UATSupabaseURL in cli/internal/oauth/flow.go")
+	if cfg.AuthURL == "" {
+		return Tokens{}, fmt.Errorf("auth URL not configured for this environment")
 	}
 	if cfg.ClientID == "" {
-		return Tokens{}, fmt.Errorf("OAuth client ID not configured — " +
-			"set ProdClientID / UATClientID in cli/internal/oauth/flow.go")
+		return Tokens{}, fmt.Errorf("OAuth client ID not configured")
 	}
 
 	state, verifier, challenge, err := generatePKCE()
@@ -186,7 +174,7 @@ func buildAuthURL(cfg Config, state, challenge, redirectURI string) string {
 	if len(cfg.Scopes) > 0 {
 		params.Set("scope", strings.Join(cfg.Scopes, " "))
 	}
-	return cfg.SupabaseURL + "/auth/v1/oauth/authorize?" + params.Encode()
+	return cfg.AuthURL + "/auth/v1/oauth/authorize?" + params.Encode()
 }
 
 func exchangeCode(ctx context.Context, cfg Config, code, verifier, redirectURI string) (Tokens, error) {
@@ -199,7 +187,7 @@ func exchangeCode(ctx context.Context, cfg Config, code, verifier, redirectURI s
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		cfg.SupabaseURL+"/auth/v1/oauth/token",
+		cfg.AuthURL+"/auth/v1/oauth/token",
 		strings.NewReader(form.Encode()))
 	if err != nil {
 		return Tokens{}, fmt.Errorf("create token request: %w", err)
@@ -289,12 +277,12 @@ var callbackPageTemplate = template.Must(template.New("callback-page").Parse(`<!
 </body>
 </html>`))
 
-// SupabaseURLForEnv returns the Supabase project URL for the given environment.
-func SupabaseURLForEnv(env string) string {
+// AuthURLForEnv returns the auth server URL for the given environment.
+func AuthURLForEnv(env string) string {
 	if env == "uat" {
-		return UATSupabaseURL
+		return UATAuthURL
 	}
-	return ProdSupabaseURL
+	return ProdAuthURL
 }
 
 // IsTokenExpired returns true when the JWT access token is expired or within
@@ -318,13 +306,13 @@ func IsTokenExpired(accessToken string) bool {
 }
 
 // RefreshTokens exchanges a refresh token for a new access + refresh token pair.
-func RefreshTokens(ctx context.Context, supabaseURL, refreshToken string) (Tokens, error) {
+func RefreshTokens(ctx context.Context, authURL, refreshToken string) (Tokens, error) {
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		supabaseURL+"/auth/v1/token?grant_type=refresh_token",
+		authURL+"/auth/v1/token?grant_type=refresh_token",
 		strings.NewReader(form.Encode()))
 	if err != nil {
 		return Tokens{}, fmt.Errorf("create refresh request: %w", err)

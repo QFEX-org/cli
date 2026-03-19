@@ -118,7 +118,7 @@ func setAuthHeaders(req *http.Request) {
 func refreshAndSave() error {
 	tokens, err := oauth.RefreshTokens(
 		rootCmd.Context(),
-		oauth.SupabaseURLForEnv(cfg.Env),
+		oauth.AuthURLForEnv(cfg.Env),
 		cfg.RefreshToken,
 	)
 	if err != nil {

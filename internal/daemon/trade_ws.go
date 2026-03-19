@@ -146,7 +146,7 @@ func (t *TradeWS) connect(ctx context.Context) error {
 	// token expiry (e.g. daemon running overnight) authenticates successfully.
 	if t.cfg.HasJWT() && oauth.IsTokenExpired(t.cfg.AccessToken) {
 		t.log.Printf("Trade WS: access token expired, refreshing...")
-		tokens, err := oauth.RefreshTokens(ctx, oauth.SupabaseURLForEnv(t.cfg.Env), t.cfg.RefreshToken)
+		tokens, err := oauth.RefreshTokens(ctx, oauth.AuthURLForEnv(t.cfg.Env), t.cfg.RefreshToken)
 		if err != nil {
 			t.log.Printf("Trade WS: token refresh failed: %v", err)
 		} else {

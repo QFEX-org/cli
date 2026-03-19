@@ -59,16 +59,16 @@ func runBrowserLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("environment must be 'prod' or 'uat'")
 	}
 
-	supabaseURL := oauth.ProdSupabaseURL
+	authURL := oauth.ProdAuthURL
 	clientID := oauth.ProdClientID
 	if env == "uat" {
-		supabaseURL = oauth.UATSupabaseURL
+		authURL = oauth.UATAuthURL
 		clientID = oauth.UATClientID
 	}
 
 	tokens, err := oauth.RunBrowserFlow(context.Background(), oauth.Config{
-		SupabaseURL: supabaseURL,
-		ClientID:    clientID,
+		AuthURL:  authURL,
+		ClientID: clientID,
 	})
 	if err != nil {
 		return err
