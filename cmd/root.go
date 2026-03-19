@@ -21,12 +21,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "qfex",
 	Short: "QFEX trading CLI",
-	Long: `qfex is a CLI for interacting with the QFEX perpetual futures exchange.
-
-Commands that require live market data or trading (order, watch, account balance, etc.)
-communicate with a background daemon. Run 'qfex daemon start' first for those.
-
-REST-based commands (market refdata, market metrics, history, etc.) work without the daemon.`,
+	Long:  `qfex is a CLI for interacting with the QFEX perpetual futures exchange.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		env := "prod (qfex.com)"
 		if cfg.IsUAT() {
