@@ -13,6 +13,8 @@ import (
 
 	"github.com/qfex/cli/internal/auth"
 	"github.com/qfex/cli/internal/build"
+	"github.com/qfex/cli/internal/config"
+	"github.com/qfex/cli/internal/oauth"
 )
 
 // apiGetURL makes a GET request to an arbitrary URL and returns the parsed JSON body.
@@ -93,6 +95,11 @@ func apiStream(path string, params url.Values, needsAuth bool) {
 
 func setAuthHeaders(req *http.Request) {
 	if cfg.HasJWT() {
+		if oauth.IsTokenExpired(cfg.AccessToken) {
+			if err := refreshAndSave(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: token refresh failed: %v\n", err)
+			}
+		}
 		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
 		return
 	}
@@ -104,6 +111,22 @@ func setAuthHeaders(req *http.Request) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+}
+
+// refreshAndSave exchanges the stored refresh token for a new access token and
+// saves both tokens back to the config file.
+func refreshAndSave() error {
+	tokens, err := oauth.RefreshTokens(
+		rootCmd.Context(),
+		oauth.SupabaseURLForEnv(cfg.Env),
+		cfg.RefreshToken,
+	)
+	if err != nil {
+		return err
+	}
+	cfg.AccessToken = tokens.AccessToken
+	cfg.RefreshToken = tokens.RefreshToken
+	return config.Save(cfg)
 }
 
 // fetchSymbols returns all active symbol names from /refdata.

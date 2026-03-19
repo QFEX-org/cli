@@ -30,7 +30,7 @@ const (
 
 	// UATSupabaseURL is the Supabase project URL for the UAT environment.
 	// TODO: set to your UAT Supabase project URL.
-	UATSupabaseURL = "https://olmmkoignwaovwzvjhil.supabase.co"
+	UATSupabaseURL = "https://verify.qfex.io"
 
 	// ProdClientID is the Supabase OAuth client ID for the CLI in production.
 	// TODO: set to your prod CLI OAuth app client_id.
@@ -291,6 +291,77 @@ var callbackPageTemplate = template.Must(template.New("callback-page").Parse(`<!
   </main>
 </body>
 </html>`))
+
+// SupabaseURLForEnv returns the Supabase project URL for the given environment.
+func SupabaseURLForEnv(env string) string {
+	if env == "uat" {
+		return UATSupabaseURL
+	}
+	return ProdSupabaseURL
+}
+
+// IsTokenExpired returns true when the JWT access token is expired or within
+// 60 seconds of expiring, or if it cannot be parsed.
+func IsTokenExpired(accessToken string) bool {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 {
+		return true
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return true
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+		return true
+	}
+	return time.Now().Add(60 * time.Second).Unix() >= claims.Exp
+}
+
+// RefreshTokens exchanges a refresh token for a new access + refresh token pair.
+func RefreshTokens(ctx context.Context, supabaseURL, refreshToken string) (Tokens, error) {
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		supabaseURL+"/auth/v1/token?grant_type=refresh_token",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return Tokens{}, fmt.Errorf("create refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return Tokens{}, fmt.Errorf("refresh request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return Tokens{}, fmt.Errorf("decode refresh response (HTTP %d): %w", resp.StatusCode, err)
+	}
+	if payload.Error != "" {
+		return Tokens{}, fmt.Errorf("token refresh failed: %s: %s", payload.Error, payload.ErrorDesc)
+	}
+	if payload.AccessToken == "" {
+		return Tokens{}, fmt.Errorf("no access_token in refresh response (HTTP %d)", resp.StatusCode)
+	}
+	return Tokens{
+		AccessToken:  payload.AccessToken,
+		RefreshToken: payload.RefreshToken,
+		ExpiresIn:    payload.ExpiresIn,
+	}, nil
+}
 
 func openBrowser(u string) {
 	var cmd string

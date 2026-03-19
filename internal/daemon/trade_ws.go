@@ -14,6 +14,7 @@ import (
 	"github.com/qfex/cli/internal/auth"
 	"github.com/qfex/cli/internal/build"
 	"github.com/qfex/cli/internal/config"
+	"github.com/qfex/cli/internal/oauth"
 )
 
 // tradeMessage represents any message from the Trade WebSocket.
@@ -141,6 +142,22 @@ func (t *TradeWS) Run(ctx context.Context) {
 }
 
 func (t *TradeWS) connect(ctx context.Context) error {
+	// Proactively refresh the JWT before connecting so that a reconnect after
+	// token expiry (e.g. daemon running overnight) authenticates successfully.
+	if t.cfg.HasJWT() && oauth.IsTokenExpired(t.cfg.AccessToken) {
+		t.log.Printf("Trade WS: access token expired, refreshing...")
+		tokens, err := oauth.RefreshTokens(ctx, oauth.SupabaseURLForEnv(t.cfg.Env), t.cfg.RefreshToken)
+		if err != nil {
+			t.log.Printf("Trade WS: token refresh failed: %v", err)
+		} else {
+			t.cfg.AccessToken = tokens.AccessToken
+			t.cfg.RefreshToken = tokens.RefreshToken
+			if err := config.Save(t.cfg); err != nil {
+				t.log.Printf("Trade WS: failed to save refreshed token: %v", err)
+			}
+		}
+	}
+
 	httpHeaders := http.Header{"User-Agent": {build.UserAgent()}}
 	if t.cfg.HasJWT() {
 		httpHeaders["Authorization"] = []string{"Bearer " + t.cfg.AccessToken}
