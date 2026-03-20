@@ -10,7 +10,7 @@ A command-line interface for the [QFEX](https://qfex.com) perpetual futures exch
 
 All output is JSON. Every command is stateless from the caller's perspective — a background daemon manages WebSocket connections.
 
-**Docs:** [CLI reference](https://docs.qfex.com/api-reference/cli) · [API key setup](https://docs.qfex.com/api-reference/introduction)
+**Docs:** [CLI reference](https://docs.qfex.com/api-reference/cli) · [API key setup](https://docs.qfex.com/api-reference/introduction) · [Trading strategies](STRATEGIES.md)
 
 ---
 
