@@ -4,6 +4,7 @@
 [![Release](https://github.com/QFEX-org/cli/actions/workflows/release.yml/badge.svg)](https://github.com/QFEX-org/cli/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/qfex/cli.svg)](https://pkg.go.dev/github.com/qfex/cli)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.qfex.com/)
 
 A command-line interface for the [QFEX](https://qfex.com) perpetual futures exchange. Built for both humans and AI agents.
 
