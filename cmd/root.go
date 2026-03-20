@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -47,8 +48,35 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	rootCmd.SilenceUsage = true
 	if err := rootCmd.Execute(); err != nil {
+		if shouldShowUsage(err) {
+			showUsageForArgs(os.Args[1:])
+		}
 		os.Exit(1)
 	}
+}
+
+func shouldShowUsage(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unknown command") ||
+		strings.Contains(msg, "unknown flag") ||
+		strings.Contains(msg, "flag needs an argument") ||
+		strings.Contains(msg, "accepts") ||
+		strings.Contains(msg, "requires at least") ||
+		strings.Contains(msg, "requires at most") ||
+		strings.Contains(msg, "requires exactly") ||
+		strings.Contains(msg, "argument")
+}
+
+func showUsageForArgs(args []string) {
+	cmd, _, err := rootCmd.Find(args)
+	if err != nil || cmd == nil {
+		_ = rootCmd.Help()
+		return
+	}
+	_ = cmd.Help()
 }
 
 func init() {

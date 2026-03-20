@@ -24,7 +24,7 @@ You can run any ` + "`qfex`" + ` command freely — treat it like ` + "`curl`" +
 
 ## Sandboxed environments (Codex)
 
-The daemon starts automatically and is the preferred way to access market data — it maintains persistent WebSocket connections for low-latency responses. If the daemon fails to start due to sandbox restrictions (Unix socket or network blocked), the following REST commands work without it as a fallback:
+The daemon starts automatically and is the preferred way to access market data — it maintains persistent WebSocket connections for low-latency responses. If the daemon cannot start in a sandboxed environment, the following REST commands work without it as a fallback:
 
 ` + "```sh" + `
 qfex market symbols                    # all tradeable symbols
@@ -83,9 +83,10 @@ fi
 `
 
 var claudeCmd = &cobra.Command{
-	Use:   "agents",
-	Short: "AI agent integration helpers",
-	Long:  `Helpers for integrating qfex with AI coding agents (Claude Code, Codex).`,
+	Use:     "agents",
+	Aliases: []string{"agent"},
+	Short:   "AI agent integration helpers",
+	Long:    `Helpers for integrating qfex with AI coding agents (Claude Code, Codex).`,
 }
 
 var claudeInitCmd = &cobra.Command{
@@ -199,31 +200,39 @@ func setupCodexGlobal(home string) error {
 		return fmt.Errorf("creating %s: %w", dir, err)
 	}
 
-	// Add qfex to allowed_programs in ~/.codex/config.toml
 	configPath := filepath.Join(dir, "config.toml")
 	existing, _ := os.ReadFile(configPath)
-	if bytes.Contains(existing, []byte("qfex")) {
-		fmt.Printf("qfex already present in %s — skipping\n", configPath)
+	content := string(existing)
+	updated := false
+
+	if !bytes.Contains(existing, []byte("qfex")) {
+		// network = "off" disables Codex's network sandbox so qfex can open
+		// outbound WebSocket connections to the exchange.
+		addition := "\n[sandbox]\nnetwork = \"off\"\nallowed_programs = [\"qfex\"]\n"
+		// If a [sandbox] section already exists, append just the settings instead.
+		if strings.Contains(content, "[sandbox]") {
+			addition = "network = \"off\"\nallowed_programs = [\"qfex\"]\n"
+		}
+		content += addition
+		updated = true
+	}
+
+	writableRoot := filepath.Join(home, ".local", "share", "qfex")
+	workspaceSection := fmt.Sprintf("\n[sandbox_workspace_write]\nwritable_roots = [\"%s\"]\nnetwork_access = true\n", writableRoot)
+	if !strings.Contains(content, "[sandbox_workspace_write]") && !strings.Contains(content, writableRoot) {
+		content += workspaceSection
+		updated = true
+	}
+
+	if !updated {
+		fmt.Printf("Codex config already configured in %s — skipping\n", configPath)
 		return nil
 	}
 
-	// network = "off" disables Codex's network sandbox so qfex can open
-	// outbound WebSocket connections to the exchange.
-	addition := "\n[sandbox]\nnetwork = \"off\"\nallowed_programs = [\"qfex\"]\n"
-	// If a [sandbox] section already exists, append just the settings instead.
-	if strings.Contains(string(existing), "[sandbox]") {
-		addition = "network = \"off\"\nallowed_programs = [\"qfex\"]\n"
-	}
-
-	f, err := os.OpenFile(configPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", configPath, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(addition); err != nil {
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", configPath, err)
 	}
-	fmt.Printf("Added qfex to allowed_programs in %s\n", configPath)
+	fmt.Printf("Updated Codex config in %s\n", configPath)
 	return nil
 }
 

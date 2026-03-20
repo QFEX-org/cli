@@ -34,7 +34,7 @@ qfex agents init
 qfex agents init --local
 ```
 
-`qfex agents init` writes `~/.claude/CLAUDE.md` (loaded by Claude Code in every session), adds `Bash(qfex*)` to `~/.claude/settings.json`, and adds `qfex` to `~/.codex/config.toml`. Use `--local` to write `CLAUDE.md` and `AGENTS.md` to the current directory instead — useful for project-specific context or for Codex, which discovers `AGENTS.md` by directory traversal rather than a global path.
+`qfex agents init` writes `~/.claude/CLAUDE.md` (loaded by Claude Code in every session), adds `Bash(qfex*)` to `~/.claude/settings.json`, and updates `~/.codex/config.toml` with both `qfex` permissions and a writable root for `~/.local/share/qfex`. Use `--local` to write `CLAUDE.md` and `AGENTS.md` to the current directory instead — useful for project-specific context or for Codex, which discovers `AGENTS.md` by directory traversal rather than a global path. `qfex agent init` is accepted as an alias.
 
 To configure manually:
 
@@ -48,7 +48,12 @@ To configure manually:
 **Codex** — add to `~/.codex/config.toml`:
 ```toml
 [sandbox]
+network = "off"
 allowed_programs = ["qfex"]
+
+[sandbox_workspace_write]
+writable_roots = ["~/.local/share/qfex"]
+network_access = true
 ```
 
 ---
