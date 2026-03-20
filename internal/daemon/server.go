@@ -509,6 +509,7 @@ func (s *Server) handlePlaceOrder(ctx context.Context, p protocol.PlaceOrderPara
 			"order_time_in_force": p.TimeInForce,
 			"quantity":            p.Quantity,
 			"price":               p.Price,
+			"reduce_only":         p.ReduceOnly,
 			"take_profit":         p.TakeProfit,
 			"stop_loss":           p.StopLoss,
 			"client_order_id":     p.ClientOrderID,

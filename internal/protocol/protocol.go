@@ -132,6 +132,7 @@ type PlaceOrderParams struct {
 	TimeInForce   string  `json:"order_time_in_force"`
 	Quantity      float64 `json:"quantity"`
 	Price         float64 `json:"price,omitempty"`
+	ReduceOnly    bool    `json:"reduce_only,omitempty"`
 	TakeProfit    float64 `json:"take_profit,omitempty"`
 	StopLoss      float64 `json:"stop_loss,omitempty"`
 	ClientOrderID string  `json:"client_order_id,omitempty"`

@@ -27,6 +27,7 @@ var (
 	orderCancelIDType string
 	orderLimit        int
 	orderOffset       int
+	orderReduceOnly   bool
 	orderWait         bool
 )
 
@@ -62,6 +63,7 @@ Examples:
 			TimeInForce:   orderTIF,
 			Quantity:      orderQty,
 			Price:         orderPrice,
+			ReduceOnly:    orderReduceOnly,
 			TakeProfit:    orderTP,
 			StopLoss:      orderSL,
 			ClientOrderID: orderClientID,
@@ -181,6 +183,7 @@ func init() {
 	placeOrderCmd.Flags().Float64Var(&orderPrice, "price", 0, "Limit price")
 	placeOrderCmd.Flags().Float64Var(&orderTP, "tp", 0, "Take profit price")
 	placeOrderCmd.Flags().Float64Var(&orderSL, "sl", 0, "Stop loss price")
+	placeOrderCmd.Flags().BoolVar(&orderReduceOnly, "reduce-only", false, "Place the order in reduce-only mode")
 	placeOrderCmd.Flags().StringVar(&orderClientID, "client-order-id", "", "Client-assigned order ID")
 	placeOrderCmd.Flags().BoolVar(&orderWait, "wait", false, "Wait for final status after ACK (FILLED, CANCELLED, REJECTED, etc.)")
 
