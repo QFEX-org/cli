@@ -18,28 +18,28 @@ You can run any ` + "`qfex`" + ` command freely — treat it like ` + "`curl`" +
 
 ## Key facts
 
-- **No login needed for market data.** ` + "`qfex daemon start`" + ` is sufficient.
-- **Daemon must be running** for market data and trading commands. Start it with ` + "`qfex daemon start`" + `. It is idempotent — safe to call even if already running.
-- **REST commands work without the daemon**: ` + "`qfex market symbols`" + `, ` + "`qfex market refdata`" + `, ` + "`qfex market metrics`" + `, ` + "`qfex history *`" + `, ` + "`qfex account fees`" + `, ` + "`qfex account pnl`" + `, ` + "`qfex account deposit`" + `.
 - **All output is JSON.** Pipe to ` + "`jq`" + ` for extraction.
+- **The daemon starts automatically** when a command needs it — never run ` + "`qfex daemon start`" + ` manually.
 - **` + "`--wait`" + ` on order place** blocks until the terminal status (FILLED, CANCELLED, REJECTED, etc.) instead of returning after the initial ACK.
 
-## Startup sequence
+## Sandboxed environments (Codex)
+
+The daemon starts automatically and is the preferred way to access market data — it maintains persistent WebSocket connections for low-latency responses. If the daemon fails to start due to sandbox restrictions (Unix socket or network blocked), the following REST commands work without it as a fallback:
 
 ` + "```sh" + `
-qfex daemon start          # idempotent
-qfex daemon status         # verify mds_connected: true
-qfex market symbols        # list tradeable symbols (no auth)
-qfex market bbo AAPL-USD   # current best bid/offer
+qfex market symbols                    # all tradeable symbols
+qfex market refdata                    # reference data
+qfex market metrics                    # mark price, volume, OI
+qfex history orders                    # filled/closed order history
+qfex history trades                    # trade history
+qfex account fees                      # fee tiers
+qfex account pnl                       # hourly PnL
+qfex account deposit                   # deposit address
 ` + "```" + `
 
 ## Trading (requires credentials)
 
 ` + "```sh" + `
-qfex login                 # set API keys interactively
-qfex daemon restart        # apply credentials
-qfex daemon status         # verify trade_authed: true
-
 qfex order place --symbol AAPL-USD --side BUY --type MARKET --tif IOC --qty 1 --wait
 qfex account balance
 qfex position list
@@ -110,26 +110,25 @@ not from a global path.`,
 	},
 }
 
-func writeFileIfAbsent(path, content string) (wrote bool, err error) {
-	if _, err := os.Stat(path); err == nil {
-		fmt.Printf("%s already exists — skipping\n", path)
-		return false, nil
-	}
+func writeAgentFile(path, content string) error {
+	_, exists := os.Stat(path)
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return false, fmt.Errorf("writing %s: %w", path, err)
+		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	fmt.Printf("Created %s\n", path)
-	return true, nil
+	if exists == nil {
+		fmt.Printf("Updated %s\n", path)
+	} else {
+		fmt.Printf("Created %s\n", path)
+	}
+	return nil
 }
 
 func agentInitLocal() error {
-	_, err1 := writeFileIfAbsent("CLAUDE.md", agentMDContent)
-	_, err2 := writeFileIfAbsent("AGENTS.md", agentMDContent)
-	if err1 != nil {
-		return err1
+	if err := writeAgentFile("CLAUDE.md", agentMDContent); err != nil {
+		return err
 	}
-	if err2 != nil {
-		return err2
+	if err := writeAgentFile("AGENTS.md", agentMDContent); err != nil {
+		return err
 	}
 	fmt.Println("Claude Code and Codex will load this context automatically when working in this directory.")
 	return nil
@@ -149,7 +148,7 @@ func agentInitGlobal() error {
 	}
 
 	// AGENTS.md is written locally — Codex discovers it by directory traversal.
-	if _, err := writeFileIfAbsent("AGENTS.md", agentMDContent); err != nil {
+	if err := writeAgentFile("AGENTS.md", agentMDContent); err != nil {
 		return err
 	}
 	return nil
@@ -161,7 +160,7 @@ func setupClaudeGlobal(home string) error {
 		return fmt.Errorf("creating %s: %w", dir, err)
 	}
 
-	if _, err := writeFileIfAbsent(filepath.Join(dir, "CLAUDE.md"), agentMDContent); err != nil {
+	if err := writeAgentFile(filepath.Join(dir, "CLAUDE.md"), agentMDContent); err != nil {
 		return err
 	}
 
@@ -208,10 +207,12 @@ func setupCodexGlobal(home string) error {
 		return nil
 	}
 
-	addition := "\n[sandbox]\nallowed_programs = [\"qfex\"]\n"
-	// If a [sandbox] section already exists, append just the line instead.
+	// network = "off" disables Codex's network sandbox so qfex can open
+	// outbound WebSocket connections to the exchange.
+	addition := "\n[sandbox]\nnetwork = \"off\"\nallowed_programs = [\"qfex\"]\n"
+	// If a [sandbox] section already exists, append just the settings instead.
 	if strings.Contains(string(existing), "[sandbox]") {
-		addition = "allowed_programs = [\"qfex\"]\n"
+		addition = "network = \"off\"\nallowed_programs = [\"qfex\"]\n"
 	}
 
 	f, err := os.OpenFile(configPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
