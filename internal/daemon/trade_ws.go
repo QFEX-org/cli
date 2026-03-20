@@ -337,6 +337,10 @@ func (t *TradeWS) dispatch(conn *websocket.Conn, data []byte) {
 	}
 
 	if len(msg.PositionResponse) > 0 {
+		var pos Position
+		if err := json.Unmarshal(msg.PositionResponse, &pos); err == nil {
+			t.state.setPosition(&pos)
+		}
 		t.resolvePending("position_response", "", msg.PositionResponse)
 		return
 	}

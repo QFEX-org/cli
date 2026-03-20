@@ -335,7 +335,9 @@ func (s *State) getAllPositions() []*Position {
 	defer s.mu.RUnlock()
 	out := make([]*Position, 0, len(s.positions))
 	for _, p := range s.positions {
-		out = append(out, p)
+		if p.Position != 0 {
+			out = append(out, p)
+		}
 	}
 	return out
 }
