@@ -89,7 +89,11 @@ func runBrowserLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 
-	fmt.Printf("Logged in (%s). Config saved to %s\n", env, config.Path())
+	if email := oauth.EmailFromToken(tokens.AccessToken); email != "" {
+		fmt.Printf("Logged in as %s (%s). Config saved to %s\n", email, env, config.Path())
+	} else {
+		fmt.Printf("Logged in (%s). Config saved to %s\n", env, config.Path())
+	}
 	fmt.Println("Restarting daemon...")
 	return runDaemonRestart(cmd, args)
 }

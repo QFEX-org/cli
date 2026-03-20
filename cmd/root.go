@@ -9,6 +9,7 @@ import (
 
 	"github.com/qfex/cli/internal/client"
 	"github.com/qfex/cli/internal/config"
+	"github.com/qfex/cli/internal/oauth"
 	"github.com/qfex/cli/internal/protocol"
 )
 
@@ -29,7 +30,11 @@ var rootCmd = &cobra.Command{
 		}
 		fmt.Fprintf(os.Stderr, "Environment: %s\n", env)
 		if cfg.HasJWT() {
-			fmt.Fprintf(os.Stderr, "Logged in\n\n")
+			if email := oauth.EmailFromToken(cfg.AccessToken); email != "" {
+				fmt.Fprintf(os.Stderr, "Logged in as %s\n\n", email)
+			} else {
+				fmt.Fprintf(os.Stderr, "Logged in\n\n")
+			}
 		} else if cfg.PublicKey != "" {
 			fmt.Fprintf(os.Stderr, "Logged in   public key: %s\n\n", cfg.PublicKey)
 		} else {

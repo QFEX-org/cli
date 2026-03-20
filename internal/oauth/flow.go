@@ -285,6 +285,26 @@ func AuthURLForEnv(env string) string {
 	return ProdAuthURL
 }
 
+// EmailFromToken decodes the JWT payload and returns the email claim, or an
+// empty string if the token is malformed or the claim is absent.
+func EmailFromToken(accessToken string) string {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Email
+}
+
 // IsTokenExpired returns true when the JWT access token is expired or within
 // 60 seconds of expiring, or if it cannot be parsed.
 func IsTokenExpired(accessToken string) bool {
