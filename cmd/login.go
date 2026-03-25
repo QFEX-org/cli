@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -84,6 +86,9 @@ func runBrowserLogin(cmd *cobra.Command, args []string) error {
 	} else {
 		cfg.Env = ""
 	}
+	if err := applyLoginSubaccountSelection(cmd, reader, os.Stdout); err != nil {
+		return err
+	}
 
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("saving config: %w", err)
@@ -145,6 +150,9 @@ func runAPIKeyLogin(cmd *cobra.Command, args []string) error {
 	} else {
 		cfg.Env = ""
 	}
+	if err := applyLoginSubaccountSelection(cmd, reader, os.Stdout); err != nil {
+		return err
+	}
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
@@ -163,6 +171,7 @@ var logoutCmd = &cobra.Command{
 		cfg.SecretKey = ""
 		cfg.AccessToken = ""
 		cfg.RefreshToken = ""
+		cfg.SelectedSubaccount = ""
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("saving config: %w", err)
 		}
@@ -176,4 +185,64 @@ func init() {
 	rootCmd.AddCommand(logoutCmd)
 
 	loginCmd.Flags().BoolVar(&loginAPIKey, "api-key", false, "Use API key login (public key + secret key) instead of browser")
+}
+
+func applyLoginSubaccountSelection(cmd *cobra.Command, in io.Reader, out io.Writer) error {
+	subaccounts, err := fetchSubaccountIDs()
+	if err != nil {
+		return err
+	}
+	return handlePostLoginSubaccountSelection(cmd, in, out, subaccounts)
+}
+
+func handlePostLoginSubaccountSelection(cmd *cobra.Command, in io.Reader, out io.Writer, subaccounts []string) error {
+	selected, err := chooseSelectedSubaccount(in, out, subaccounts)
+	if err != nil {
+		return err
+	}
+	cfg.SelectedSubaccount = selected
+	return nil
+}
+
+func chooseSelectedSubaccount(in io.Reader, out io.Writer, subaccounts []string) (string, error) {
+	if len(subaccounts) == 0 {
+		return "", nil
+	}
+
+	if _, err := fmt.Fprintln(out, "Select active account:"); err != nil {
+		return "", err
+	}
+	if _, err := fmt.Fprintln(out, "  0) primary"); err != nil {
+		return "", err
+	}
+	for i, subaccount := range subaccounts {
+		if _, err := fmt.Fprintf(out, "  %d) %s\n", i+1, subaccount); err != nil {
+			return "", err
+		}
+	}
+	if _, err := fmt.Fprint(out, "Choice [0]: "); err != nil {
+		return "", err
+	}
+
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", nil
+	}
+
+	choice, err := strconv.Atoi(line)
+	if err != nil {
+		return "", fmt.Errorf("invalid selection: %s", line)
+	}
+	if choice == 0 {
+		return "", nil
+	}
+	if choice < 0 || choice > len(subaccounts) {
+		return "", fmt.Errorf("selection out of range: %d", choice)
+	}
+	return subaccounts[choice-1], nil
 }
