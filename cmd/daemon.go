@@ -188,6 +188,13 @@ func runDaemonRestart(cmd *cobra.Command, args []string) error {
 	return runDaemonStart(cmd, args)
 }
 
+func restartDaemonIfRunning(cmd *cobra.Command) error {
+	if !daemonIsRunning() {
+		return nil
+	}
+	return daemonRestart(cmd, nil)
+}
+
 func runDaemonForeground(cmd *cobra.Command, args []string) error {
 	d := daemon.New(cfg, config.SocketPath())
 	ctx := context.Background()

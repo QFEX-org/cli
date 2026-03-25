@@ -20,6 +20,13 @@ var (
 	jsonOutput bool
 )
 
+var (
+	daemonIsRunning = func() bool {
+		return cli != nil && cli.IsRunning()
+	}
+	daemonRestart = runDaemonRestart
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "qfex",
 	Short: "QFEX trading CLI",
@@ -136,7 +143,7 @@ func sendAndPrint(cmd string, params any) {
 
 // requireDaemon ensures the daemon is running, starting it automatically if needed.
 func requireDaemon() {
-	if cli.IsRunning() {
+	if daemonIsRunning() {
 		return
 	}
 	fmt.Fprintln(os.Stderr, "Starting daemon...")

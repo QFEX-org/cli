@@ -19,6 +19,10 @@ import (
 
 // apiGetURL makes a GET request to an arbitrary URL and returns the parsed JSON body.
 func apiGetURL(u string, needsAuth bool) json.RawMessage {
+	return apiGetURLWithAccountSelection(u, needsAuth, true)
+}
+
+func apiGetURLWithAccountSelection(u string, needsAuth bool, includeRequestedAccount bool) json.RawMessage {
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -26,7 +30,7 @@ func apiGetURL(u string, needsAuth bool) json.RawMessage {
 	}
 	req.Header.Set("Accept", "application/json")
 	if needsAuth {
-		setAuthHeaders(req)
+		setAuthHeaders(req, includeRequestedAccount)
 	}
 	return doRequest(req)
 }
@@ -34,6 +38,10 @@ func apiGetURL(u string, needsAuth bool) json.RawMessage {
 // apiGet makes a GET request to the REST API and returns the parsed JSON body.
 // If needsAuth is true, HMAC auth headers are added.
 func apiGet(path string, params url.Values, needsAuth bool) json.RawMessage {
+	return apiGetWithAccountSelection(path, params, needsAuth, true)
+}
+
+func apiGetWithAccountSelection(path string, params url.Values, needsAuth bool, includeRequestedAccount bool) json.RawMessage {
 	u := cfg.APIURL() + path
 	if len(params) > 0 {
 		u += "?" + params.Encode()
@@ -45,27 +53,43 @@ func apiGet(path string, params url.Values, needsAuth bool) json.RawMessage {
 	}
 	req.Header.Set("Accept", "application/json")
 	if needsAuth {
-		setAuthHeaders(req)
+		setAuthHeaders(req, includeRequestedAccount)
 	}
 	return doRequest(req)
 }
 
 // apiPost makes an authenticated POST request and returns the parsed JSON body.
 func apiPost(path string, payload any) json.RawMessage {
+	return apiPostWithQuery(path, nil, payload)
+}
+
+func apiPostWithQuery(path string, params url.Values, payload any) json.RawMessage {
+	return apiPostWithQueryAndAccountSelection(path, params, payload, true)
+}
+
+func apiPostWithQueryAndAccountSelection(path string, params url.Values, payload any, includeRequestedAccount bool) json.RawMessage {
 	b, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, cfg.APIURL()+path, bytes.NewReader(b))
+	u := cfg.APIURL() + path
+	if len(params) > 0 {
+		u += "?" + params.Encode()
+	}
+	req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(b))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	setAuthHeaders(req)
+	setAuthHeaders(req, includeRequestedAccount)
 	return doRequest(req)
 }
 
 // apiStream makes a GET request and streams the response body to stdout (for CSV endpoints).
 func apiStream(path string, params url.Values, needsAuth bool) {
+	apiStreamWithAccountSelection(path, params, needsAuth, true)
+}
+
+func apiStreamWithAccountSelection(path string, params url.Values, needsAuth bool, includeRequestedAccount bool) {
 	u := cfg.APIURL() + path
 	if len(params) > 0 {
 		u += "?" + params.Encode()
@@ -77,7 +101,7 @@ func apiStream(path string, params url.Values, needsAuth bool) {
 	}
 	req.Header.Set("User-Agent", build.UserAgent())
 	if needsAuth {
-		setAuthHeaders(req)
+		setAuthHeaders(req, includeRequestedAccount)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -93,7 +117,7 @@ func apiStream(path string, params url.Values, needsAuth bool) {
 	io.Copy(os.Stdout, resp.Body)
 }
 
-func setAuthHeaders(req *http.Request) {
+func setAuthHeaders(req *http.Request, includeRequestedAccount bool) {
 	if cfg.HasJWT() {
 		if oauth.IsTokenExpired(cfg.AccessToken) {
 			if err := refreshAndSave(); err != nil {
@@ -101,6 +125,7 @@ func setAuthHeaders(req *http.Request) {
 			}
 		}
 		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
+		setRequestedAccountHeader(req, includeRequestedAccount)
 		return
 	}
 	headers, err := auth.RESTHeaders(cfg.PublicKey, cfg.SecretKey)
@@ -110,6 +135,13 @@ func setAuthHeaders(req *http.Request) {
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
+	}
+	setRequestedAccountHeader(req, includeRequestedAccount)
+}
+
+func setRequestedAccountHeader(req *http.Request, includeRequestedAccount bool) {
+	if includeRequestedAccount && cfg != nil && cfg.HasSelectedSubaccount() {
+		req.Header.Set("x-qfex-requested-account-id", cfg.SelectedSubaccount)
 	}
 }
 
