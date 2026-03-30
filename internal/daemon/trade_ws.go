@@ -28,51 +28,51 @@ type tradeMessage struct {
 	Contents     json.RawMessage `json:"contents,omitempty"`
 
 	// Direct response keys
-	Authenticated              *bool           `json:"authenticated,omitempty"`
-	Subscribed                 *string         `json:"subscribed,omitempty"`
-	Unsubscribed               *string         `json:"unsubscribed,omitempty"`
-	OrderResponse              json.RawMessage `json:"order_response,omitempty"`
-	FillResponse               json.RawMessage `json:"fill_response,omitempty"`
-	AllOrdersResponse          json.RawMessage `json:"all_orders_response,omitempty"`
-	UserTradesResponse         json.RawMessage `json:"user_trades_response,omitempty"`
-	UserLeverageResponse       json.RawMessage `json:"user_leverage_response,omitempty"`
-	AvailableLeverageResponse  json.RawMessage `json:"available_leverage_levels_response,omitempty"`
-	PositionResponse           json.RawMessage `json:"position_response,omitempty"`
-	BalanceResponse            json.RawMessage `json:"balance_response,omitempty"`
-	StopOrderResponse          json.RawMessage `json:"stop_order_response,omitempty"`
-	TwapResponse               json.RawMessage `json:"twap_response,omitempty"`
-	Ack                        json.RawMessage `json:"ack,omitempty"`
-	Err                        json.RawMessage `json:"err,omitempty"`
+	Authenticated             *bool           `json:"authenticated,omitempty"`
+	Subscribed                *string         `json:"subscribed,omitempty"`
+	Unsubscribed              *string         `json:"unsubscribed,omitempty"`
+	OrderResponse             json.RawMessage `json:"order_response,omitempty"`
+	FillResponse              json.RawMessage `json:"fill_response,omitempty"`
+	AllOrdersResponse         json.RawMessage `json:"all_orders_response,omitempty"`
+	UserTradesResponse        json.RawMessage `json:"user_trades_response,omitempty"`
+	UserLeverageResponse      json.RawMessage `json:"user_leverage_response,omitempty"`
+	AvailableLeverageResponse json.RawMessage `json:"available_leverage_levels_response,omitempty"`
+	PositionResponse          json.RawMessage `json:"position_response,omitempty"`
+	BalanceResponse           json.RawMessage `json:"balance_response,omitempty"`
+	StopOrderResponse         json.RawMessage `json:"stop_order_response,omitempty"`
+	TwapResponse              json.RawMessage `json:"twap_response,omitempty"`
+	Ack                       json.RawMessage `json:"ack,omitempty"`
+	Err                       json.RawMessage `json:"err,omitempty"`
 }
 
 // terminalOrderStatuses are order statuses that are final (not ACK).
 var terminalOrderStatuses = map[string]bool{
-	"FILLED":                              true,
-	"CANCELLED":                           true,
-	"CANCELLED_STP":                       true,
-	"REJECTED":                            true,
-	"NO_SUCH_ORDER":                       true,
-	"INVALID_ORDER_TYPE":                  true,
-	"BAD_SYMBOL":                          true,
-	"PRICE_LESS_THAN_MIN_PRICE":           true,
-	"PRICE_GREATER_THAN_MAX_PRICE":        true,
-	"CANNOT_MODIFY_PARTIAL_FILL":          true,
-	"FAILED_MARGIN_CHECK":                 true,
-	"INVALID_TICK_SIZE_PRECISION_PRICE":   true,
+	"FILLED":                               true,
+	"CANCELLED":                            true,
+	"CANCELLED_STP":                        true,
+	"REJECTED":                             true,
+	"NO_SUCH_ORDER":                        true,
+	"INVALID_ORDER_TYPE":                   true,
+	"BAD_SYMBOL":                           true,
+	"PRICE_LESS_THAN_MIN_PRICE":            true,
+	"PRICE_GREATER_THAN_MAX_PRICE":         true,
+	"CANNOT_MODIFY_PARTIAL_FILL":           true,
+	"FAILED_MARGIN_CHECK":                  true,
+	"INVALID_TICK_SIZE_PRECISION_PRICE":    true,
 	"INVALID_TICK_SIZE_PRECISION_QUANTITY": true,
-	"QUANTITY_LESS_THAN_MIN_QUANTITY":     true,
-	"QUANTITY_GREATER_THAN_MAX_QUANTITY":  true,
-	"INVALID_TIME_IN_FORCE":               true,
-	"REJECTED_WOULD_BREACH_MAX_NOTIONAL":  true,
-	"CANNOT_MODIFY_NO_SUCH_ORDER":         true,
-	"REJECTED_MARKET_CLOSED":              true,
-	"REJECTED_FAILED_TO_PROCESS":          true,
-	"INVALID_TAKEPROFIT_PRICE":            true,
-	"INVALID_STOPLOSS_PRICE":              true,
-	"RATE_LIMITED":                        true,
-	"REJECTED_TOO_MANY_OPEN_ORDERS":       true,
-	"REJECTED_OPEN_INTEREST_LIMIT":        true,
-	"MODIFIED":                            true,
+	"QUANTITY_LESS_THAN_MIN_QUANTITY":      true,
+	"QUANTITY_GREATER_THAN_MAX_QUANTITY":   true,
+	"INVALID_TIME_IN_FORCE":                true,
+	"REJECTED_WOULD_BREACH_MAX_NOTIONAL":   true,
+	"CANNOT_MODIFY_NO_SUCH_ORDER":          true,
+	"REJECTED_MARKET_CLOSED":               true,
+	"REJECTED_FAILED_TO_PROCESS":           true,
+	"INVALID_TAKEPROFIT_PRICE":             true,
+	"INVALID_STOPLOSS_PRICE":               true,
+	"RATE_LIMITED":                         true,
+	"REJECTED_TOO_MANY_OPEN_ORDERS":        true,
+	"REJECTED_OPEN_INTEREST_LIMIT":         true,
+	"MODIFIED":                             true,
 }
 
 // pendingRequest waits for a specific response from the Trade WS.
@@ -219,33 +219,39 @@ func (t *TradeWS) connect(ctx context.Context) error {
 	}
 }
 
-
 func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
-	if t.cfg.HasJWT() {
-		msg := map[string]any{
-			"type": "auth",
-			"params": map[string]any{
-				"jwt": t.cfg.AccessToken,
-			},
-		}
-		return conn.WriteJSON(msg)
-	}
-	creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey)
+	msg, err := t.buildAuthMessage()
 	if err != nil {
 		return err
 	}
-	msg := map[string]any{
-		"type": "auth",
-		"params": map[string]any{
-			"hmac": map[string]any{
-				"public_key": creds.PublicKey,
-				"nonce":      creds.Nonce,
-				"unix_ts":    creds.UnixTS,
-				"signature":  creds.Signature,
-			},
-		},
-	}
+	raw, _ := json.Marshal(msg)
+	t.log.Printf("Trade WS: sending auth: %s", raw)
 	return conn.WriteJSON(msg)
+}
+
+func (t *TradeWS) buildAuthMessage() (map[string]any, error) {
+	params := map[string]any{}
+	if t.cfg.HasJWT() {
+		params["jwt"] = t.cfg.AccessToken
+	} else {
+		creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey)
+		if err != nil {
+			return nil, err
+		}
+		params["hmac"] = map[string]any{
+			"public_key": creds.PublicKey,
+			"nonce":      creds.Nonce,
+			"unix_ts":    creds.UnixTS,
+			"signature":  creds.Signature,
+		}
+	}
+	if t.cfg.HasSelectedSubaccount() {
+		params["account_id"] = t.cfg.SelectedSubaccount
+	}
+	return map[string]any{
+		"type":   "auth",
+		"params": params,
+	}, nil
 }
 
 func (t *TradeWS) dispatch(conn *websocket.Conn, data []byte) {

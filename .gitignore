@@ -2,6 +2,7 @@
 qfex
 cli
 dist/
+.worktrees/
 
 # Go
 *.test

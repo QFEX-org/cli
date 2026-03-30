@@ -6,9 +6,11 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/qfex/cli/internal/config"
 	"github.com/qfex/cli/internal/protocol"
 )
 
@@ -22,11 +24,22 @@ var leverageCmd = &cobra.Command{
 	Short: "Leverage management commands",
 }
 
+var subaccountsCmd = &cobra.Command{
+	Use:   "subaccounts",
+	Short: "Manage account subaccounts",
+}
+
 var (
 	levSymbol   string
 	levLeverage float64
 	levLimit    int
 	levOffset   int
+)
+
+var (
+	subaccountTransferFrom   string
+	subaccountTransferTo     string
+	subaccountTransferAmount float64
 )
 
 var balanceCmd = &cobra.Command{
@@ -175,11 +188,101 @@ var cancelOnDisconnectCmd = &cobra.Command{
 	},
 }
 
+var listSubaccountsCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List your subaccounts",
+	Run: func(cmd *cobra.Command, args []string) {
+		printResult(apiGetWithAccountSelection("/user/subaccounts", nil, true, false))
+	},
+}
+
+var createSubaccountCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new subaccount",
+	Run: func(cmd *cobra.Command, args []string) {
+		printResult(apiPostWithQueryAndAccountSelection("/user/subaccounts", nil, struct{}{}, false))
+	},
+}
+
+var transferSubaccountCmd = &cobra.Command{
+	Use:   "transfer",
+	Short: "Transfer funds between your accounts and subaccounts",
+	Long: `Transfer funds between your primary account and subaccounts.
+
+Use "primary" as the --from or --to value to refer to your primary account.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateSubaccountTransferInput(subaccountTransferFrom, subaccountTransferTo, subaccountTransferAmount); err != nil {
+			return err
+		}
+		from, err := resolveAccountID(subaccountTransferFrom)
+		if err != nil {
+			return err
+		}
+		to, err := resolveAccountID(subaccountTransferTo)
+		if err != nil {
+			return err
+		}
+		params := url.Values{}
+		params.Set("src_account_id", from)
+		params.Set("dst_account_id", to)
+		printResult(apiPostWithQueryAndAccountSelection("/user/transfer", params, map[string]any{
+			"amount": subaccountTransferAmount,
+		}, false))
+		return nil
+	},
+}
+
+var currentSubaccountCmd = &cobra.Command{
+	Use:   "current",
+	Short: "Show the currently selected subaccount",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Print(currentSubaccountOutput())
+	},
+}
+
+var selectSubaccountCmd = &cobra.Command{
+	Use:   "select <account-id|primary>",
+	Short: "Select the active subaccount and restart the daemon if needed",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		selected, err := normalizeSelectedSubaccount(args[0])
+		if err != nil {
+			return err
+		}
+
+		if selected != "" {
+			subaccounts, err := fetchSubaccountIDs()
+			if err != nil {
+				return err
+			}
+			if err := validateSelectableSubaccount(selected, subaccounts); err != nil {
+				return err
+			}
+		}
+
+		if cfg.SelectedSubaccount == selected {
+			fmt.Print(currentSubaccountOutput())
+			return nil
+		}
+
+		cfg.SelectedSubaccount = selected
+		if err := config.Save(cfg); err != nil {
+			return fmt.Errorf("saving config: %w", err)
+		}
+		if err := restartDaemonIfRunning(cmd); err != nil {
+			return err
+		}
+		fmt.Print(currentSubaccountOutput())
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(accountCmd)
 	accountCmd.AddCommand(balanceCmd)
 	accountCmd.AddCommand(depositCmd)
 	accountCmd.AddCommand(leverageCmd)
+	accountCmd.AddCommand(subaccountsCmd)
 	accountCmd.AddCommand(cancelOnDisconnectCmd)
 	accountCmd.AddCommand(feesCmd)
 	accountCmd.AddCommand(pnlCmd)
@@ -187,6 +290,11 @@ func init() {
 	leverageCmd.AddCommand(getLeverageCmd)
 	leverageCmd.AddCommand(setLeverageCmd)
 	leverageCmd.AddCommand(getAvailableLeverageCmd)
+	subaccountsCmd.AddCommand(listSubaccountsCmd)
+	subaccountsCmd.AddCommand(createSubaccountCmd)
+	subaccountsCmd.AddCommand(transferSubaccountCmd)
+	subaccountsCmd.AddCommand(currentSubaccountCmd)
+	subaccountsCmd.AddCommand(selectSubaccountCmd)
 
 	getLeverageCmd.Flags().IntVar(&levLimit, "limit", 50, "Maximum number of results")
 	getLeverageCmd.Flags().IntVar(&levOffset, "offset", 0, "Pagination offset")
@@ -203,4 +311,68 @@ func init() {
 	pnlCmd.Flags().StringVar(&pnlStart, "start", "", "Start time in ISO 8601")
 	pnlCmd.Flags().StringVar(&pnlEnd, "end", "", "End time in ISO 8601")
 	pnlCmd.Flags().Int64Var(&pnlLimitHours, "limit-hours", 168, "Hours of history (default 168, max 2160)")
+
+	transferSubaccountCmd.Flags().StringVar(&subaccountTransferFrom, "from", "", "Source account ID")
+	transferSubaccountCmd.Flags().StringVar(&subaccountTransferTo, "to", "", "Destination account ID")
+	transferSubaccountCmd.Flags().Float64Var(&subaccountTransferAmount, "amount", 0, "Amount to transfer")
+}
+
+type subaccountsResponse struct {
+	AccountIDs []string `json:"account_ids"`
+}
+
+func fetchSubaccountIDs() ([]string, error) {
+	raw := apiGetWithAccountSelection("/user/subaccounts", nil, true, false)
+	var resp subaccountsResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse subaccounts response: %w", err)
+	}
+	if resp.AccountIDs == nil {
+		return []string{}, nil
+	}
+	return resp.AccountIDs, nil
+}
+
+func currentSubaccountOutput() string {
+	if cfg == nil || !cfg.HasSelectedSubaccount() {
+		return "primary\n"
+	}
+	return cfg.SelectedSubaccount + "\n"
+}
+
+func validateSubaccountTransferInput(from, to string, amount float64) error {
+	if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" || amount <= 0 {
+		return fmt.Errorf("required: --from, --to, --amount")
+	}
+	return nil
+}
+
+func validateSelectableSubaccount(selected string, subaccounts []string) error {
+	for _, subaccount := range subaccounts {
+		if subaccount == selected {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown subaccount: %s", selected)
+}
+
+func normalizeSelectedSubaccount(value string) (string, error) {
+	selected := strings.TrimSpace(value)
+	if selected == "" {
+		return "", fmt.Errorf("account ID cannot be empty")
+	}
+	if selected == "primary" {
+		return "", nil
+	}
+	return selected, nil
+}
+
+func resolveAccountID(value string) (string, error) {
+	if strings.TrimSpace(strings.ToLower(value)) == "primary" {
+		if cfg == nil || cfg.UserID == "" {
+			return "", fmt.Errorf("primary account ID not available; please re-login with browser auth (qfex login)")
+		}
+		return cfg.UserID, nil
+	}
+	return value, nil
 }

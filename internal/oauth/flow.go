@@ -288,7 +288,17 @@ func AuthURLForEnv(env string) string {
 // EmailFromToken decodes the JWT payload and returns the email claim, or an
 // empty string if the token is malformed or the claim is absent.
 func EmailFromToken(accessToken string) string {
-	parts := strings.Split(accessToken, ".")
+	return jwtClaim(accessToken, "email")
+}
+
+// SubFromToken decodes the JWT payload and returns the sub (user ID) claim,
+// or an empty string if the token is malformed or the claim is absent.
+func SubFromToken(accessToken string) string {
+	return jwtClaim(accessToken, "sub")
+}
+
+func jwtClaim(token, key string) string {
+	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return ""
 	}
@@ -296,13 +306,19 @@ func EmailFromToken(accessToken string) string {
 	if err != nil {
 		return ""
 	}
-	var claims struct {
-		Email string `json:"email"`
-	}
+	var claims map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return ""
 	}
-	return claims.Email
+	raw, ok := claims[key]
+	if !ok {
+		return ""
+	}
+	var val string
+	if err := json.Unmarshal(raw, &val); err != nil {
+		return ""
+	}
+	return val
 }
 
 // IsTokenExpired returns true when the JWT access token is expired or within

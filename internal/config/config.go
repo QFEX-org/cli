@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,6 +21,14 @@ type Config struct {
 	// Env selects the target environment: "prod" (default) or "uat".
 	// UAT is identical to prod but uses qfex.io instead of qfex.com.
 	Env string `yaml:"env,omitempty"`
+
+	// UserID is the primary account ID (JWT "sub" claim), stored at login time.
+	// Used to resolve "primary" in transfer --from/--to flags.
+	UserID string `yaml:"user_id,omitempty"`
+
+	// SelectedSubaccount stores the active child account to use for authenticated
+	// REST requests and daemon trade auth. Empty means use the primary account.
+	SelectedSubaccount string `yaml:"selected_subaccount,omitempty"`
 
 	// Optional per-URL overrides (take precedence over Env).
 	TradeWSURL string `yaml:"trade_ws_url,omitempty"`
@@ -66,6 +75,10 @@ func (c *Config) HasCredentials() bool {
 // HasJWT returns true when a JWT access token is stored (browser login).
 func (c *Config) HasJWT() bool {
 	return c.AccessToken != ""
+}
+
+func (c *Config) HasSelectedSubaccount() bool {
+	return strings.TrimSpace(c.SelectedSubaccount) != ""
 }
 
 func Dir() string {
