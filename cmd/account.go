@@ -207,13 +207,24 @@ var createSubaccountCmd = &cobra.Command{
 var transferSubaccountCmd = &cobra.Command{
 	Use:   "transfer",
 	Short: "Transfer funds between your accounts and subaccounts",
+	Long: `Transfer funds between your primary account and subaccounts.
+
+Use "primary" as the --from or --to value to refer to your primary account.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateSubaccountTransferInput(subaccountTransferFrom, subaccountTransferTo, subaccountTransferAmount); err != nil {
 			return err
 		}
+		from, err := resolveAccountID(subaccountTransferFrom)
+		if err != nil {
+			return err
+		}
+		to, err := resolveAccountID(subaccountTransferTo)
+		if err != nil {
+			return err
+		}
 		params := url.Values{}
-		params.Set("src_account_id", subaccountTransferFrom)
-		params.Set("dst_account_id", subaccountTransferTo)
+		params.Set("src_account_id", from)
+		params.Set("dst_account_id", to)
 		printResult(apiPostWithQueryAndAccountSelection("/user/transfer", params, map[string]any{
 			"amount": subaccountTransferAmount,
 		}, false))
@@ -307,9 +318,7 @@ func init() {
 }
 
 type subaccountsResponse struct {
-	Body struct {
-		AccountIDs []string `json:"account_ids"`
-	} `json:"body"`
+	AccountIDs []string `json:"account_ids"`
 }
 
 func fetchSubaccountIDs() ([]string, error) {
@@ -318,10 +327,10 @@ func fetchSubaccountIDs() ([]string, error) {
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse subaccounts response: %w", err)
 	}
-	if resp.Body.AccountIDs == nil {
+	if resp.AccountIDs == nil {
 		return []string{}, nil
 	}
-	return resp.Body.AccountIDs, nil
+	return resp.AccountIDs, nil
 }
 
 func currentSubaccountOutput() string {
@@ -356,4 +365,14 @@ func normalizeSelectedSubaccount(value string) (string, error) {
 		return "", nil
 	}
 	return selected, nil
+}
+
+func resolveAccountID(value string) (string, error) {
+	if strings.TrimSpace(strings.ToLower(value)) == "primary" {
+		if cfg == nil || cfg.UserID == "" {
+			return "", fmt.Errorf("primary account ID not available; please re-login with browser auth (qfex login)")
+		}
+		return cfg.UserID, nil
+	}
+	return value, nil
 }

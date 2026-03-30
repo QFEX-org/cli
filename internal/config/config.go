@@ -22,6 +22,10 @@ type Config struct {
 	// UAT is identical to prod but uses qfex.io instead of qfex.com.
 	Env string `yaml:"env,omitempty"`
 
+	// UserID is the primary account ID (JWT "sub" claim), stored at login time.
+	// Used to resolve "primary" in transfer --from/--to flags.
+	UserID string `yaml:"user_id,omitempty"`
+
 	// SelectedSubaccount stores the active child account to use for authenticated
 	// REST requests and daemon trade auth. Empty means use the primary account.
 	SelectedSubaccount string `yaml:"selected_subaccount,omitempty"`

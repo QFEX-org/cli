@@ -224,6 +224,8 @@ func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
+	raw, _ := json.Marshal(msg)
+	t.log.Printf("Trade WS: sending auth: %s", raw)
 	return conn.WriteJSON(msg)
 }
 

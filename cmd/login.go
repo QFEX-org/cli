@@ -78,7 +78,7 @@ func runBrowserLogin(cmd *cobra.Command, args []string) error {
 
 	cfg.AccessToken = tokens.AccessToken
 	cfg.RefreshToken = tokens.RefreshToken
-	// Clear any stale API key credentials.
+	cfg.UserID = oauth.SubFromToken(tokens.AccessToken)
 	cfg.PublicKey = ""
 	cfg.SecretKey = ""
 	if env == "uat" {
@@ -142,9 +142,9 @@ func runAPIKeyLogin(cmd *cobra.Command, args []string) error {
 
 	cfg.PublicKey = publicKey
 	cfg.SecretKey = secretKey
-	// Clear any stale JWT credentials.
 	cfg.AccessToken = ""
 	cfg.RefreshToken = ""
+	cfg.UserID = ""
 	if env == "uat" {
 		cfg.Env = "uat"
 	} else {
@@ -171,6 +171,7 @@ var logoutCmd = &cobra.Command{
 		cfg.SecretKey = ""
 		cfg.AccessToken = ""
 		cfg.RefreshToken = ""
+		cfg.UserID = ""
 		cfg.SelectedSubaccount = ""
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("saving config: %w", err)
