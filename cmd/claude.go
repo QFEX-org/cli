@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,17 +112,86 @@ not from a global path.`,
 	},
 }
 
+// Markers delimiting the qfex section inside an agent context file, so the
+// section can be refreshed in place without touching anything the user wrote
+// around it.
+const (
+	agentBlockBegin = "<!-- BEGIN qfex CLI -->"
+	agentBlockEnd   = "<!-- END qfex CLI -->"
+)
+
+func agentBlock(content string) string {
+	return agentBlockBegin + "\n" + content + "\n" + agentBlockEnd + "\n"
+}
+
+// writeAgentFile adds the qfex section to an agent context file, keeping
+// whatever the file already holds. These are files users write themselves —
+// ~/.claude/CLAUDE.md carries their global Claude Code instructions — so the
+// section is appended or refreshed in place rather than replacing the file.
 func writeAgentFile(path, content string) error {
-	_, exists := os.Stat(path)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	block := agentBlock(content)
+
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("reading %s: %w", path, err)
+		}
+		if err := os.WriteFile(path, []byte(block), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+		fmt.Printf("Created %s\n", path)
+		return nil
+	}
+
+	updated, err := replaceAgentBlock(string(existing), block, content)
+	if err != nil {
+		return fmt.Errorf("updating %s: %w", path, err)
+	}
+	if updated == string(existing) {
+		fmt.Printf("qfex context already present in %s — skipping\n", path)
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	if exists == nil {
-		fmt.Printf("Updated %s\n", path)
-	} else {
-		fmt.Printf("Created %s\n", path)
-	}
+	fmt.Printf("Updated %s\n", path)
 	return nil
+}
+
+// replaceAgentBlock returns existing with the qfex section refreshed: swapped
+// in place when the markers are there, and appended otherwise. A file written
+// by an earlier qfex version holds the bare content with no markers, so that
+// is matched too and wrapped, rather than left behind as a duplicate.
+func replaceAgentBlock(existing, block, content string) (string, error) {
+	begin := strings.Index(existing, agentBlockBegin)
+	if begin != -1 {
+		end := strings.Index(existing[begin:], agentBlockEnd)
+		if end == -1 {
+			return "", fmt.Errorf("found %s without a matching %s", agentBlockBegin, agentBlockEnd)
+		}
+		end += begin + len(agentBlockEnd)
+		for end < len(existing) && existing[end] == '\n' {
+			end++
+		}
+		return existing[:begin] + block + existing[end:], nil
+	}
+
+	if legacy := strings.Index(existing, content); legacy != -1 {
+		end := legacy + len(content)
+		for end < len(existing) && existing[end] == '\n' {
+			end++
+		}
+		return existing[:legacy] + block + existing[end:], nil
+	}
+
+	prefix := existing
+	if prefix != "" && !strings.HasSuffix(prefix, "\n") {
+		prefix += "\n"
+	}
+	if prefix != "" {
+		prefix += "\n"
+	}
+	return prefix + block, nil
 }
 
 func agentInitLocal() error {
