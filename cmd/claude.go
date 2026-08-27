@@ -161,7 +161,7 @@ func writeAgentFile(path, content string) error {
 // replaceAgentBlock returns existing with the qfex section refreshed: swapped
 // in place when the markers are there, and appended otherwise. A file written
 // by an earlier qfex version holds the bare content with no markers, so that
-// is matched too and wrapped, rather than left behind as a duplicate.
+// section is matched too and wrapped, rather than left behind as a duplicate.
 func replaceAgentBlock(existing, block, content string) (string, error) {
 	begin := strings.Index(existing, agentBlockBegin)
 	if begin != -1 {
@@ -170,18 +170,11 @@ func replaceAgentBlock(existing, block, content string) (string, error) {
 			return "", fmt.Errorf("found %s without a matching %s", agentBlockBegin, agentBlockEnd)
 		}
 		end += begin + len(agentBlockEnd)
-		for end < len(existing) && existing[end] == '\n' {
-			end++
-		}
-		return existing[:begin] + block + existing[end:], nil
+		return existing[:begin] + block + dropLineBreak(existing[end:]), nil
 	}
 
-	if legacy := strings.Index(existing, content); legacy != -1 {
-		end := legacy + len(content)
-		for end < len(existing) && existing[end] == '\n' {
-			end++
-		}
-		return existing[:legacy] + block + existing[end:], nil
+	if start, end := legacySection(existing, content); start != -1 {
+		return existing[:start] + block + dropLineBreak(existing[end:]), nil
 	}
 
 	prefix := existing
@@ -192,6 +185,59 @@ func replaceAgentBlock(existing, block, content string) (string, error) {
 		prefix += "\n"
 	}
 	return prefix + block, nil
+}
+
+// dropLineBreak removes the newline that ended the replaced section's last
+// line, which block supplies itself. Blank lines past it are the separation
+// the user put before whatever comes next, so they are left alone.
+func dropLineBreak(rest string) string {
+	return strings.TrimPrefix(rest, "\n")
+}
+
+// legacySection locates a qfex section written before the markers existed: the
+// run from content's own heading to the next top-level heading, or to the end
+// of the file. Matching the heading rather than the whole of content means a
+// section written by a different release is still upgraded in place, instead
+// of being appended beside the new one as a stale duplicate.
+func legacySection(existing, content string) (start, end int) {
+	heading, _, _ := strings.Cut(content, "\n")
+	if !strings.HasPrefix(heading, "# ") {
+		return -1, -1
+	}
+	start = lineIndex(existing, heading)
+	if start == -1 {
+		return -1, -1
+	}
+	end = len(existing)
+	for offset := start; offset < len(existing); {
+		br := strings.IndexByte(existing[offset:], '\n')
+		if br == -1 {
+			break
+		}
+		next := offset + br + 1
+		if next > start && strings.HasPrefix(existing[next:], "# ") {
+			end = next
+			break
+		}
+		offset = next
+	}
+	return start, len(strings.TrimRight(existing[:end], "\n"))
+}
+
+// lineIndex returns the offset of the first line of s equal to line, or -1.
+func lineIndex(s, line string) int {
+	for offset := 0; offset <= len(s); {
+		if rest := s[offset:]; strings.HasPrefix(rest, line) &&
+			(len(rest) == len(line) || rest[len(line)] == '\n') {
+			return offset
+		}
+		br := strings.IndexByte(s[offset:], '\n')
+		if br == -1 {
+			return -1
+		}
+		offset += br + 1
+	}
+	return -1
 }
 
 func agentInitLocal() error {

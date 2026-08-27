@@ -100,3 +100,47 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+func TestWriteAgentFileKeepsBlankLinesAfterSection(t *testing.T) {
+	// Refreshing the block must not consume the blank line separating it from
+	// whatever the user keeps below, and an unchanged file must not be rewritten.
+	path := filepath.Join(t.TempDir(), "CLAUDE.md")
+	original := agentBlock(agentMDContent) + "\n" + userContent
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeAgentFile(path, agentMDContent); err != nil {
+		t.Fatalf("writeAgentFile: %v", err)
+	}
+
+	if got := readFile(t, path); got != original {
+		t.Errorf("refresh changed an up-to-date file:\n got %q\nwant %q", got, original)
+	}
+}
+
+func TestWriteAgentFileUpgradesDriftedUnmarkedSection(t *testing.T) {
+	// The unmarked section on disk was written by an earlier release, so it does
+	// not match the current content verbatim. It must still be upgraded in
+	// place, not left beside the new block as a stale second qfex section.
+	path := filepath.Join(t.TempDir(), "CLAUDE.md")
+	stale := "# qfex CLI\n\nInstructions from an earlier release.\n"
+	if err := os.WriteFile(path, []byte(userContent+"\n"+stale), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeAgentFile(path, agentMDContent); err != nil {
+		t.Fatalf("writeAgentFile: %v", err)
+	}
+
+	got := readFile(t, path)
+	if n := strings.Count(got, "# qfex CLI"); n != 1 {
+		t.Errorf("qfex section appears %d times, want 1", n)
+	}
+	if strings.Contains(got, "Instructions from an earlier release.") {
+		t.Error("the superseded section was left behind")
+	}
+	if !strings.Contains(got, "Always answer in metric units.") {
+		t.Error("the user's own instructions were lost")
+	}
+}
