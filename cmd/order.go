@@ -16,7 +16,8 @@ var orderCmd = &cobra.Command{
 var (
 	orderSymbol       string
 	orderSide         string
-	orderType         string
+	placeOrderType    string
+	modifyOrderType   string
 	orderTIF          string
 	orderQty          float64
 	orderPrice        float64
@@ -49,17 +50,17 @@ Examples:
 		requireDaemon()
 		requireAuth()
 
-		if orderSymbol == "" || orderSide == "" || orderType == "" || orderTIF == "" || orderQty == 0 {
+		if orderSymbol == "" || orderSide == "" || placeOrderType == "" || orderTIF == "" || orderQty == 0 {
 			return fmt.Errorf("required: --symbol, --side, --type, --tif, --qty")
 		}
-		if (orderType == "LIMIT" || orderType == "ALO") && orderPrice == 0 {
-			return fmt.Errorf("--price is required for %s orders", orderType)
+		if (placeOrderType == "LIMIT" || placeOrderType == "ALO") && orderPrice == 0 {
+			return fmt.Errorf("--price is required for %s orders", placeOrderType)
 		}
 
 		params := protocol.PlaceOrderParams{
 			Symbol:        orderSymbol,
 			Side:          orderSide,
-			OrderType:     orderType,
+			OrderType:     placeOrderType,
 			TimeInForce:   orderTIF,
 			Quantity:      orderQty,
 			Price:         orderPrice,
@@ -113,14 +114,14 @@ var modifyOrderCmd = &cobra.Command{
 		requireDaemon()
 		requireAuth()
 
-		if orderSymbol == "" || orderID == "" || orderSide == "" || orderType == "" {
+		if orderSymbol == "" || orderID == "" || orderSide == "" || modifyOrderType == "" {
 			return fmt.Errorf("required: --symbol, --order-id, --side, --type")
 		}
 		sendAndPrint(protocol.CmdModifyOrder, protocol.ModifyOrderParams{
 			Symbol:     orderSymbol,
 			OrderID:    orderID,
 			Side:       orderSide,
-			OrderType:  orderType,
+			OrderType:  modifyOrderType,
 			Price:      orderPrice,
 			Quantity:   orderQty,
 			TakeProfit: orderTP,
@@ -178,7 +179,7 @@ func init() {
 
 	// Place order flags
 	placeOrderCmd.Flags().StringVar(&orderSide, "side", "", "Order side: BUY or SELL")
-	placeOrderCmd.Flags().StringVar(&orderType, "type", "LIMIT", "Order type: LIMIT, MARKET, ALO")
+	placeOrderCmd.Flags().StringVar(&placeOrderType, "type", "LIMIT", "Order type: LIMIT, MARKET, ALO")
 	placeOrderCmd.Flags().StringVar(&orderTIF, "tif", "GTC", "Time in force: GTC, IOC, FOK")
 	placeOrderCmd.Flags().Float64Var(&orderQty, "qty", 0, "Order quantity")
 	placeOrderCmd.Flags().Float64Var(&orderPrice, "price", 0, "Limit price")
@@ -195,7 +196,7 @@ func init() {
 	// Modify order flags
 	modifyOrderCmd.Flags().StringVar(&orderID, "order-id", "", "Order ID to modify")
 	modifyOrderCmd.Flags().StringVar(&orderSide, "side", "", "Current side of the order: BUY or SELL")
-	modifyOrderCmd.Flags().StringVar(&orderType, "type", "", "Current type of the order: LIMIT, MARKET, ALO")
+	modifyOrderCmd.Flags().StringVar(&modifyOrderType, "type", "", "Current type of the order: LIMIT, MARKET, ALO")
 	modifyOrderCmd.Flags().Float64Var(&orderQty, "qty", 0, "New quantity")
 	modifyOrderCmd.Flags().Float64Var(&orderPrice, "price", 0, "New limit price")
 	modifyOrderCmd.Flags().Float64Var(&orderTP, "tp", 0, "New take profit price")
