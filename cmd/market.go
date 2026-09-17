@@ -26,9 +26,10 @@ var marketCmd = &cobra.Command{
 }
 
 var (
-	marketDepth    int
-	marketLimit    int
-	candleInterval string
+	marketDepth           int
+	marketTradesLimit     int
+	settlementPricesLimit int
+	candleInterval        string
 
 	// REST-only flags
 	marketFrom       string
@@ -76,7 +77,7 @@ var tradesCmd = &cobra.Command{
 		requireDaemon()
 		sendAndPrint(protocol.CmdGetTrades, protocol.GetTradesParams{
 			Symbol: args[0],
-			Limit:  marketLimit,
+			Limit:  marketTradesLimit,
 		})
 	},
 }
@@ -239,8 +240,8 @@ var settlementPricesCmd = &cobra.Command{
 		if marketEnd != "" {
 			params.Set("end", marketEnd)
 		}
-		if marketLimit > 0 {
-			params.Set("limit", strconv.Itoa(marketLimit))
+		if settlementPricesLimit > 0 {
+			params.Set("limit", strconv.Itoa(settlementPricesLimit))
 		}
 		printResult(apiGet("/settlement-prices", params, false))
 	},
@@ -337,7 +338,7 @@ func init() {
 	marketCmd.AddCommand(underlierHistoryCmd)
 
 	orderbookCmd.Flags().IntVar(&marketDepth, "depth", 0, "Number of levels to show (0 = all)")
-	tradesCmd.Flags().IntVar(&marketLimit, "limit", 20, "Number of trades to show")
+	tradesCmd.Flags().IntVar(&marketTradesLimit, "limit", 20, "Number of trades to show")
 	candlesCmd.Flags().StringVar(&candleInterval, "interval", "", "Candle interval (1MIN, 5MINS, 15MINS, 1HOUR, 4HOURS, 1DAY)")
 
 	refdataCmd.Flags().StringVar(&marketTicker, "ticker", "", "Filter by ticker (e.g. AAPL-USD)")
@@ -360,7 +361,7 @@ func init() {
 	settlementPricesCmd.Flags().StringVar(&marketTicker, "symbol", "", "Filter by symbol")
 	settlementPricesCmd.Flags().StringVar(&marketStart, "start", "", "Start time in ISO 8601")
 	settlementPricesCmd.Flags().StringVar(&marketEnd, "end", "", "End time in ISO 8601")
-	settlementPricesCmd.Flags().IntVar(&marketLimit, "limit", 0, "Max results (default 100, max 1000)")
+	settlementPricesCmd.Flags().IntVar(&settlementPricesLimit, "limit", 0, "Max results (default 100, max 1000)")
 
 	longShortCmd.Flags().StringVar(&marketInterval, "interval", "", "Time interval (e.g. 1h, 4h, 1d)")
 	longShortCmd.Flags().StringVar(&marketFrom, "from", "", "Start time in ISO 8601")
