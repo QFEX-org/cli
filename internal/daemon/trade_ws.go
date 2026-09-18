@@ -45,7 +45,7 @@ type tradeMessage struct {
 	Err                       json.RawMessage `json:"err,omitempty"`
 }
 
-// terminalOrderStatuses are order statuses that are final (not ACK).
+// terminalOrderStatuses are order statuses that represent a final response for a pending command wait (not ACK).
 var terminalOrderStatuses = map[string]bool{
 	"FILLED":                               true,
 	"CANCELLED":                            true,
@@ -75,6 +75,20 @@ var terminalOrderStatuses = map[string]bool{
 	"MODIFIED":                             true,
 }
 
+// isOrderClosed returns true if the order status means the order is no longer working on the book.
+// MODIFIED and CANNOT_MODIFY_PARTIAL_FILL indicate an active order is still present on the book.
+func isOrderClosed(status string) bool {
+	switch status {
+	case "FILLED", "CANCELLED", "CANCELLED_STP", "REJECTED", "NO_SUCH_ORDER",
+		"REJECTED_MARKET_CLOSED", "REJECTED_FAILED_TO_PROCESS",
+		"REJECTED_WOULD_BREACH_MAX_NOTIONAL", "REJECTED_TOO_MANY_OPEN_ORDERS",
+		"REJECTED_OPEN_INTEREST_LIMIT":
+		return true
+	default:
+		return false
+	}
+}
+
 // pendingRequest waits for a specific response from the Trade WS.
 type pendingRequest struct {
 	// responseKey is the JSON key to match (e.g. "order_response")
@@ -83,7 +97,10 @@ type pendingRequest struct {
 	clientOrderID string
 	// skipIfACK skips order_response messages with status "ACK", waiting for a terminal status.
 	skipIfACK bool
-	ch        chan json.RawMessage
+	// noWildcard forbids the empty-client-order-id wildcard: responses whose
+	// payload carries no client_order_id are skipped.
+	noWildcard bool
+	ch         chan json.RawMessage
 }
 
 // TradeWS manages the authenticated Trade WebSocket connection.
@@ -224,8 +241,7 @@ func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
-	raw, _ := json.Marshal(msg)
-	t.log.Printf("Trade WS: sending auth: %s", raw)
+	t.log.Printf("Trade WS: sending auth (public key: %s)", t.cfg.PublicKey)
 	return conn.WriteJSON(msg)
 }
 
@@ -279,7 +295,7 @@ func (t *TradeWS) dispatch(conn *websocket.Conn, data []byte) {
 	// Error response
 	if len(msg.Err) > 0 {
 		t.log.Printf("Trade WS: error: %s", string(msg.Err))
-		// Fail first pending request if any
+		// Fail all pending requests
 		t.failPending(msg.Err)
 		return
 	}
@@ -300,12 +316,12 @@ func (t *TradeWS) dispatch(conn *websocket.Conn, data []byte) {
 	if len(msg.OrderResponse) > 0 {
 		var order Order
 		if err := json.Unmarshal(msg.OrderResponse, &order); err == nil {
-			// Update state for non-terminal statuses
-			switch order.Status {
-			case "ACK", "MODIFIED":
-				t.state.setOrder(&order)
-			case "FILLED", "CANCELLED", "CANCELLED_STP":
+			// Evict closed/terminal orders from the cache. Modified or partially filled orders
+			// remain active on the order book and must stay in cache.
+			if isOrderClosed(order.Status) {
 				t.state.removeOrder(order.OrderID)
+			} else {
+				t.state.setOrder(&order)
 			}
 			// Resolve pending request by client_order_id or generic order_response
 			t.resolvePending("order_response", order.ClientOrderID, msg.OrderResponse)
@@ -421,6 +437,27 @@ func (t *TradeWS) subscribeAll(conn *websocket.Conn) {
 // clientOrderID is used to match order responses (can be empty).
 // Returns the raw JSON of the matched response value.
 func (t *TradeWS) Send(ctx context.Context, cmd map[string]any, responseKey, clientOrderID string) (json.RawMessage, error) {
+	p := &pendingRequest{
+		responseKey:   responseKey,
+		clientOrderID: clientOrderID,
+		ch:            make(chan json.RawMessage, 1),
+	}
+	return t.sendPending(ctx, cmd, p, responseKey)
+}
+
+// SendNoWildcard sends a command and waits for a response, but never uses the
+// empty-client-order-id wildcard: the matched response payload must carry a
+// non-empty client_order_id. Used for requests sent without an explicit ID.
+func (t *TradeWS) SendNoWildcard(ctx context.Context, cmd map[string]any, responseKey string) (json.RawMessage, error) {
+	p := &pendingRequest{
+		responseKey: responseKey,
+		noWildcard:  true,
+		ch:          make(chan json.RawMessage, 1),
+	}
+	return t.sendPending(ctx, cmd, p, responseKey)
+}
+
+func (t *TradeWS) sendPending(ctx context.Context, cmd map[string]any, p *pendingRequest, responseKey string) (json.RawMessage, error) {
 	t.mu.Lock()
 	conn := t.conn
 	authed := t.authed
@@ -431,12 +468,6 @@ func (t *TradeWS) Send(ctx context.Context, cmd map[string]any, responseKey, cli
 	}
 	if !authed {
 		return nil, fmt.Errorf("not authenticated")
-	}
-
-	p := &pendingRequest{
-		responseKey:   responseKey,
-		clientOrderID: clientOrderID,
-		ch:            make(chan json.RawMessage, 1),
 	}
 
 	t.pendingMu.Lock()
@@ -499,6 +530,8 @@ func (t *TradeWS) IsAuthed() bool {
 }
 
 // WaitAuth waits until the connection is authenticated or ctx expires.
+// Note: currently unused by the daemon; the polling logic for trade
+// authentication lives in cmd/daemon.go (runDaemonStart).
 func (t *TradeWS) WaitAuth(ctx context.Context) error {
 	deadline := time.Now().Add(15 * time.Second)
 	for {
@@ -526,12 +559,18 @@ func (t *TradeWS) resolvePending(responseKey, clientOrderID string, data json.Ra
 		if p.clientOrderID != "" && clientOrderID != "" && p.clientOrderID != clientOrderID {
 			continue
 		}
-		// If this waiter only wants terminal statuses, skip ACK responses.
+		// no-wildcard waiters resolve only responses whose payload carries a
+		// non-empty client_order_id.
+		if p.noWildcard && clientOrderID == "" {
+			continue
+		}
+		// If this waiter only wants terminal statuses, skip non-terminal
+		// responses so that any terminal status resolves the wait.
 		if p.skipIfACK && responseKey == "order_response" {
 			var o struct {
 				Status string `json:"status"`
 			}
-			if json.Unmarshal(data, &o) == nil && o.Status == "ACK" {
+			if json.Unmarshal(data, &o) == nil && o.Status != "" && !terminalOrderStatuses[o.Status] {
 				continue
 			}
 		}
@@ -592,12 +631,11 @@ func (t *TradeWS) WaitOnFinal(ctx context.Context, ch chan json.RawMessage, time
 func (t *TradeWS) failPending(errData json.RawMessage) {
 	t.pendingMu.Lock()
 	defer t.pendingMu.Unlock()
-	if len(t.pending) > 0 {
-		p := t.pending[0]
+	for _, p := range t.pending {
 		select {
 		case p.ch <- errData:
 		default:
 		}
-		t.pending = t.pending[1:]
 	}
+	t.pending = nil
 }

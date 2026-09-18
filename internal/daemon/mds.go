@@ -75,6 +75,13 @@ func newMDSWS(url string, state *State, logger *log.Logger) *MDSWS {
 	}
 }
 
+// IsConnected reports whether the MDS WebSocket connection is currently active.
+func (m *MDSWS) IsConnected() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.conn != nil
+}
+
 // Run connects and maintains the MDS WebSocket, reconnecting on failure.
 func (m *MDSWS) Run(ctx context.Context) {
 	backoff := time.Second

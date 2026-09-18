@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/QFEX-org/cli/internal/protocol"
@@ -20,6 +21,9 @@ type Server struct {
 	socketPath string
 	d          *Daemon
 	log        *log.Logger
+
+	// conns tracks active IPC connections so they can be closed on shutdown.
+	conns sync.Map
 }
 
 func newServer(socketPath string, d *Daemon, logger *log.Logger) *Server {
@@ -44,6 +48,12 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		ln.Close()
+		s.conns.Range(func(key, value any) bool {
+			if c, ok := value.(net.Conn); ok {
+				c.Close()
+			}
+			return true
+		})
 	}()
 
 	for {
@@ -60,7 +70,11 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	s.conns.Store(conn, conn)
+	defer func() {
+		s.conns.Delete(conn)
+		conn.Close()
+	}()
 
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20)
@@ -349,7 +363,7 @@ func (s *Server) handleStatus() protocol.Response {
 		"env":           env,
 		"mds_url":       s.d.cfg.MDS(),
 		"trade_url":     s.d.cfg.TradeWS(),
-		"mds_connected": s.d.mds.conn != nil,
+		"mds_connected": s.d.mds.IsConnected(),
 		"trade_authed":  s.d.trade.IsAuthed(),
 	}))
 }
@@ -565,11 +579,33 @@ func (s *Server) handleCancelOrder(ctx context.Context, p protocol.CancelOrderPa
 			"cancel_order_id_type": p.CancelIDType,
 		},
 	}
-	// Cancel responses are always terminal (CANCELLED, NO_SUCH_ORDER, etc.).
-	// Match by order_id when the id type is order_id for precision.
-	matchID := ""
-	if p.CancelIDType == "order_id" {
-		matchID = p.OrderID
+
+	// Handle TWAP cancels separately: they respond with twap_response or generic ack,
+	// not an individual order_response keyed by order_id.
+	if p.CancelIDType == "twap_id" || p.CancelIDType == "client_twap_id" {
+		data, err := s.d.trade.Send(ctx, cmd, "twap_response", p.OrderID)
+		if err != nil {
+			// Fall back to ack if the server answers TWAP cancels with an ack frame
+			data, err = s.d.trade.Send(ctx, cmd, "ack", "")
+			if err != nil {
+				return errResp(err.Error())
+			}
+		}
+		return okResp(data)
+	}
+
+	// Standard order cancel: responses are terminal order_response frames.
+	// Bind the pending match to the explicit request ID (order_id or client
+	// order id) so an unrelated order_response cannot satisfy this wait.
+	matchID := p.OrderID
+	if matchID == "" {
+		// No explicit ID: never use the resolvePending wildcard. Match only
+		// via the client_order_id carried by the order payload.
+		data, err := s.d.trade.SendNoWildcard(ctx, cmd, "order_response")
+		if err != nil {
+			return errResp(err.Error())
+		}
+		return okResp(data)
 	}
 	data, err := s.d.trade.Send(ctx, cmd, "order_response", matchID)
 	if err != nil {
@@ -633,7 +669,7 @@ func (s *Server) handleGetOrder(ctx context.Context, p protocol.GetOrderParams) 
 		"type":   "get_order",
 		"params": map[string]any{"order_id": p.OrderID, "symbol": p.Symbol},
 	}
-	data, err := s.d.trade.Send(ctx, cmd, "order_response", "")
+	data, err := s.d.trade.Send(ctx, cmd, "order_response", p.OrderID)
 	if err != nil {
 		return errResp(err.Error())
 	}
