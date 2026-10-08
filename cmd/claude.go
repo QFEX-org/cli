@@ -196,7 +196,8 @@ func dropLineBreak(rest string) string {
 
 // legacySection locates a qfex section written before the markers existed: the
 // run from content's own heading to the next top-level heading, or to the end
-// of the file. Matching the heading rather than the whole of content means a
+// of the file. Lines inside a fenced code block, like shell comments, are not
+// headings. Matching the heading rather than the whole of content means a
 // section written by a different release is still upgraded in place, instead
 // of being appended beside the new one as a stale duplicate.
 func legacySection(existing, content string) (start, end int) {
@@ -209,13 +210,17 @@ func legacySection(existing, content string) (start, end int) {
 		return -1, -1
 	}
 	end = len(existing)
+	inFence := false
 	for offset := start; offset < len(existing); {
 		br := strings.IndexByte(existing[offset:], '\n')
 		if br == -1 {
 			break
 		}
 		next := offset + br + 1
-		if next > start && strings.HasPrefix(existing[next:], "# ") {
+		line := existing[next:]
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		} else if !inFence && strings.HasPrefix(line, "# ") {
 			end = next
 			break
 		}

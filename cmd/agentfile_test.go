@@ -119,6 +119,29 @@ func TestWriteAgentFileKeepsBlankLinesAfterSection(t *testing.T) {
 	}
 }
 
+func TestWriteAgentFileUpgradesUnmarkedSectionWithCodeComments(t *testing.T) {
+	// The qfex section has shell comments like "# Extract mid price" in a code
+	// block. They are not headings, so the whole legacy section is replaced and
+	// the user's section after it is kept.
+	path := filepath.Join(t.TempDir(), "CLAUDE.md")
+	notes := "# My notes\n\nKeep this.\n"
+	if err := os.WriteFile(path, []byte(agentMDContent+"\n"+notes), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeAgentFile(path, agentMDContent); err != nil {
+		t.Fatalf("writeAgentFile: %v", err)
+	}
+
+	got := readFile(t, path)
+	if n := strings.Count(got, "# Extract mid price"); n != 1 {
+		t.Errorf("the code block appears %d times, want 1", n)
+	}
+	if !strings.HasSuffix(got, agentBlockEnd+"\n\n"+notes) {
+		t.Errorf("the user's section after the qfex section was not kept:\n%s", got)
+	}
+}
+
 func TestWriteAgentFileUpgradesDriftedUnmarkedSection(t *testing.T) {
 	// The unmarked section on disk was written by an earlier release, so it does
 	// not match the current content verbatim. It must still be upgraded in
