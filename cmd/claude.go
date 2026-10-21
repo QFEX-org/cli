@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,17 +112,174 @@ not from a global path.`,
 	},
 }
 
+// Markers delimiting the qfex section inside an agent context file, so the
+// section can be refreshed in place without touching anything the user wrote
+// around it.
+const (
+	agentBlockBegin = "<!-- BEGIN qfex CLI -->"
+	agentBlockEnd   = "<!-- END qfex CLI -->"
+)
+
+func agentBlock(content string) string {
+	return agentBlockBegin + "\n" + content + "\n" + agentBlockEnd + "\n"
+}
+
+// writeAgentFile adds the qfex section to an agent context file, keeping
+// whatever the file already holds. These are files users write themselves —
+// ~/.claude/CLAUDE.md carries their global Claude Code instructions — so the
+// section is appended or refreshed in place rather than replacing the file.
 func writeAgentFile(path, content string) error {
-	_, exists := os.Stat(path)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	block := agentBlock(content)
+
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("reading %s: %w", path, err)
+		}
+		if err := os.WriteFile(path, []byte(block), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+		fmt.Printf("Created %s\n", path)
+		return nil
+	}
+
+	updated, err := replaceAgentBlock(string(existing), block, content)
+	if err != nil {
+		return fmt.Errorf("updating %s: %w", path, err)
+	}
+	if updated == string(existing) {
+		fmt.Printf("qfex context already present in %s — skipping\n", path)
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	if exists == nil {
-		fmt.Printf("Updated %s\n", path)
-	} else {
-		fmt.Printf("Created %s\n", path)
-	}
+	fmt.Printf("Updated %s\n", path)
 	return nil
+}
+
+// replaceAgentBlock returns existing with the qfex section refreshed: swapped
+// in place when the markers are there, and appended otherwise. A file written
+// by an earlier qfex version holds the bare content with no markers, so that
+// section is matched too and wrapped, rather than left behind as a duplicate.
+func replaceAgentBlock(existing, block, content string) (string, error) {
+	begin := strings.Index(existing, agentBlockBegin)
+	if begin != -1 {
+		end := strings.Index(existing[begin:], agentBlockEnd)
+		if end == -1 {
+			return "", fmt.Errorf("found %s without a matching %s", agentBlockBegin, agentBlockEnd)
+		}
+		end += begin + len(agentBlockEnd)
+		return existing[:begin] + block + dropLineBreak(existing[end:]), nil
+	}
+
+	if start, end := legacySection(existing, content); start != -1 {
+		return existing[:start] + block + dropLineBreak(existing[end:]), nil
+	}
+
+	prefix := existing
+	if prefix != "" && !strings.HasSuffix(prefix, "\n") {
+		prefix += "\n"
+	}
+	if prefix != "" {
+		prefix += "\n"
+	}
+	return prefix + block, nil
+}
+
+// dropLineBreak removes the line break that ended the replaced section's last
+// line, which block supplies itself. Blank lines past it are the separation
+// the user put before whatever comes next, so they are left alone.
+func dropLineBreak(rest string) string {
+	if r, ok := strings.CutPrefix(rest, "\r\n"); ok {
+		return r
+	}
+	return strings.TrimPrefix(rest, "\n")
+}
+
+// legacySection locates a qfex section written before the markers existed.
+//
+// When content appears verbatim it is matched exactly. Otherwise the section
+// was written by a different release, so it runs from content's own heading
+// until the first heading that content does not have, or to the end of the
+// file. Stopping at any unknown heading, not only a top-level one, keeps text
+// the user added below the old section, such as a "## My notes" heading:
+// anything whose ownership is unclear is preserved. Lines inside a fenced code
+// block, like shell comments, are not headings.
+func legacySection(existing, content string) (start, end int) {
+	content = strings.TrimRight(content, "\n")
+	if i := lineIndex(existing, content); i != -1 {
+		return i, i + len(content)
+	}
+
+	heading, _, _ := strings.Cut(content, "\n")
+	if !strings.HasPrefix(heading, "# ") {
+		return -1, -1
+	}
+	start = lineIndex(existing, heading)
+	if start == -1 {
+		return -1, -1
+	}
+	known := markdownHeadings(content)
+	end = len(existing)
+	inFence := false
+	for offset := start; offset < len(existing); {
+		br := strings.IndexByte(existing[offset:], '\n')
+		if br == -1 {
+			break
+		}
+		next := offset + br + 1
+		line, _, _ := strings.Cut(existing[next:], "\n")
+		line = strings.TrimSuffix(line, "\r")
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		} else if !inFence && isMarkdownHeading(line) && !known[line] {
+			end = next
+			break
+		}
+		offset = next
+	}
+	return start, len(strings.TrimRight(existing[:end], "\r\n"))
+}
+
+// markdownHeadings returns the heading lines of s that are outside fenced
+// code blocks.
+func markdownHeadings(s string) map[string]bool {
+	headings := map[string]bool{}
+	inFence := false
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		} else if !inFence && isMarkdownHeading(line) {
+			headings[line] = true
+		}
+	}
+	return headings
+}
+
+// isMarkdownHeading reports whether line is an ATX heading such as "## Notes".
+func isMarkdownHeading(line string) bool {
+	level := len(line) - len(strings.TrimLeft(line, "#"))
+	return level >= 1 && level <= 6 && strings.HasPrefix(line[level:], " ")
+}
+
+// lineIndex returns the offset of the first place s holds text starting at a
+// line start and ending at a line end (LF or CRLF) or the end of s, or -1.
+func lineIndex(s, text string) int {
+	for offset := 0; offset <= len(s); {
+		if rest := s[offset:]; strings.HasPrefix(rest, text) {
+			after := rest[len(text):]
+			if after == "" || after[0] == '\n' || strings.HasPrefix(after, "\r\n") {
+				return offset
+			}
+		}
+		br := strings.IndexByte(s[offset:], '\n')
+		if br == -1 {
+			return -1
+		}
+		offset += br + 1
+	}
+	return -1
 }
 
 func agentInitLocal() error {
