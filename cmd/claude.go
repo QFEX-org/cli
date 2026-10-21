@@ -187,20 +187,31 @@ func replaceAgentBlock(existing, block, content string) (string, error) {
 	return prefix + block, nil
 }
 
-// dropLineBreak removes the newline that ended the replaced section's last
+// dropLineBreak removes the line break that ended the replaced section's last
 // line, which block supplies itself. Blank lines past it are the separation
 // the user put before whatever comes next, so they are left alone.
 func dropLineBreak(rest string) string {
+	if r, ok := strings.CutPrefix(rest, "\r\n"); ok {
+		return r
+	}
 	return strings.TrimPrefix(rest, "\n")
 }
 
-// legacySection locates a qfex section written before the markers existed: the
-// run from content's own heading to the next top-level heading, or to the end
-// of the file. Lines inside a fenced code block, like shell comments, are not
-// headings. Matching the heading rather than the whole of content means a
-// section written by a different release is still upgraded in place, instead
-// of being appended beside the new one as a stale duplicate.
+// legacySection locates a qfex section written before the markers existed.
+//
+// When content appears verbatim it is matched exactly. Otherwise the section
+// was written by a different release, so it runs from content's own heading
+// until the first heading that content does not have, or to the end of the
+// file. Stopping at any unknown heading, not only a top-level one, keeps text
+// the user added below the old section, such as a "## My notes" heading:
+// anything whose ownership is unclear is preserved. Lines inside a fenced code
+// block, like shell comments, are not headings.
 func legacySection(existing, content string) (start, end int) {
+	content = strings.TrimRight(content, "\n")
+	if i := lineIndex(existing, content); i != -1 {
+		return i, i + len(content)
+	}
+
 	heading, _, _ := strings.Cut(content, "\n")
 	if !strings.HasPrefix(heading, "# ") {
 		return -1, -1
@@ -209,6 +220,7 @@ func legacySection(existing, content string) (start, end int) {
 	if start == -1 {
 		return -1, -1
 	}
+	known := markdownHeadings(content)
 	end = len(existing)
 	inFence := false
 	for offset := start; offset < len(existing); {
@@ -217,24 +229,49 @@ func legacySection(existing, content string) (start, end int) {
 			break
 		}
 		next := offset + br + 1
-		line := existing[next:]
+		line, _, _ := strings.Cut(existing[next:], "\n")
+		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, "```") {
 			inFence = !inFence
-		} else if !inFence && strings.HasPrefix(line, "# ") {
+		} else if !inFence && isMarkdownHeading(line) && !known[line] {
 			end = next
 			break
 		}
 		offset = next
 	}
-	return start, len(strings.TrimRight(existing[:end], "\n"))
+	return start, len(strings.TrimRight(existing[:end], "\r\n"))
 }
 
-// lineIndex returns the offset of the first line of s equal to line, or -1.
-func lineIndex(s, line string) int {
+// markdownHeadings returns the heading lines of s that are outside fenced
+// code blocks.
+func markdownHeadings(s string) map[string]bool {
+	headings := map[string]bool{}
+	inFence := false
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		} else if !inFence && isMarkdownHeading(line) {
+			headings[line] = true
+		}
+	}
+	return headings
+}
+
+// isMarkdownHeading reports whether line is an ATX heading such as "## Notes".
+func isMarkdownHeading(line string) bool {
+	level := len(line) - len(strings.TrimLeft(line, "#"))
+	return level >= 1 && level <= 6 && strings.HasPrefix(line[level:], " ")
+}
+
+// lineIndex returns the offset of the first place s holds text starting at a
+// line start and ending at a line end (LF or CRLF) or the end of s, or -1.
+func lineIndex(s, text string) int {
 	for offset := 0; offset <= len(s); {
-		if rest := s[offset:]; strings.HasPrefix(rest, line) &&
-			(len(rest) == len(line) || rest[len(line)] == '\n') {
-			return offset
+		if rest := s[offset:]; strings.HasPrefix(rest, text) {
+			after := rest[len(text):]
+			if after == "" || after[0] == '\n' || strings.HasPrefix(after, "\r\n") {
+				return offset
+			}
 		}
 		br := strings.IndexByte(s[offset:], '\n')
 		if br == -1 {

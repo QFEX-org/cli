@@ -167,3 +167,75 @@ func TestWriteAgentFileUpgradesDriftedUnmarkedSection(t *testing.T) {
 		t.Error("the user's own instructions were lost")
 	}
 }
+
+func TestWriteAgentFileKeepsUserSubsectionAfterLegacySection(t *testing.T) {
+	// Text the user added below an unmarked qfex section, even under a
+	// second-level heading, is theirs and must survive the upgrade.
+	notes := "## My notes\n\nKeep this.\n"
+	for name, legacy := range map[string]string{
+		"verbatim": agentMDContent,
+		"drifted":  "# qfex CLI\n\nInstructions from an earlier release.\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "CLAUDE.md")
+			if err := os.WriteFile(path, []byte(legacy+"\n"+notes), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := writeAgentFile(path, agentMDContent); err != nil {
+				t.Fatalf("writeAgentFile: %v", err)
+			}
+
+			got := readFile(t, path)
+			if want := agentBlock(agentMDContent) + "\n" + notes; got != want {
+				t.Errorf("upgrade changed the user's notes:\n got %q\nwant %q", got, want)
+			}
+		})
+	}
+}
+
+func TestWriteAgentFileUpgradesCRLFLegacySection(t *testing.T) {
+	// A legacy file saved with CRLF line endings must be upgraded in place,
+	// not given a second qfex section.
+	path := filepath.Join(t.TempDir(), "CLAUDE.md")
+	crlf := strings.ReplaceAll(userContent+"\n"+agentMDContent, "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(crlf), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeAgentFile(path, agentMDContent); err != nil {
+		t.Fatalf("writeAgentFile: %v", err)
+	}
+
+	got := readFile(t, path)
+	if n := strings.Count(got, "# qfex CLI"); n != 1 {
+		t.Errorf("qfex section appears %d times, want 1", n)
+	}
+	if n := strings.Count(got, agentBlockBegin); n != 1 {
+		t.Errorf("qfex block appears %d times, want 1", n)
+	}
+	if !strings.Contains(got, "Always answer in metric units.") {
+		t.Error("the user's own instructions were lost")
+	}
+}
+
+func TestWriteAgentFileRefreshesStaleMarkedBlock(t *testing.T) {
+	// A marked block from an earlier release is replaced in place. The user's
+	// text before and after it is untouched, and a second run changes nothing.
+	path := filepath.Join(t.TempDir(), "CLAUDE.md")
+	after := "# After\n\nAlso mine.\n"
+	stale := agentBlock("# qfex CLI\n\nInstructions from an earlier release.")
+	if err := os.WriteFile(path, []byte(userContent+"\n"+stale+"\n"+after), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	want := userContent + "\n" + agentBlock(agentMDContent) + "\n" + after
+	for run := 1; run <= 2; run++ {
+		if err := writeAgentFile(path, agentMDContent); err != nil {
+			t.Fatalf("run %d: writeAgentFile: %v", run, err)
+		}
+		if got := readFile(t, path); got != want {
+			t.Errorf("run %d:\n got %q\nwant %q", run, got, want)
+		}
+	}
+}
