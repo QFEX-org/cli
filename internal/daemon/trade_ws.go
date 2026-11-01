@@ -224,8 +224,9 @@ func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
-	raw, _ := json.Marshal(msg)
-	t.log.Printf("Trade WS: sending auth: %s", raw)
+	// Never log the auth message: it contains the session JWT or the HMAC
+	// signature, and the daemon log is a plain file on disk.
+	t.log.Printf("Trade WS: sending auth (credentials redacted)")
 	return conn.WriteJSON(msg)
 }
 
