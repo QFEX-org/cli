@@ -71,8 +71,13 @@ func runDaemonStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Ensure data dir exists
-	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
+	if err := os.MkdirAll(config.DataDir(), 0700); err != nil {
 		return fmt.Errorf("creating data dir: %w", err)
+	}
+	// MkdirAll does not change the mode of an existing directory, so tighten
+	// installs created by older versions as well.
+	if err := os.Chmod(config.DataDir(), 0700); err != nil {
+		return fmt.Errorf("restricting data dir permissions: %w", err)
 	}
 
 	exe, err := os.Executable()
@@ -80,11 +85,16 @@ func runDaemonStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("finding executable: %w", err)
 	}
 
-	logFile, err := os.OpenFile(config.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(config.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return fmt.Errorf("opening log file: %w", err)
 	}
 	defer logFile.Close()
+	// The mode passed to OpenFile only applies when the file is created, so
+	// tighten a log file left over from an older version.
+	if err := logFile.Chmod(0600); err != nil {
+		return fmt.Errorf("restricting log file permissions: %w", err)
+	}
 
 	proc := exec.Command(exe, "daemon", "run")
 	proc.Stdin = nil
