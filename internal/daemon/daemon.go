@@ -143,7 +143,7 @@ func (d *Daemon) getCurrentValue(stream, symbol, interval string) []byte {
 }
 
 func writePID() error {
-	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
+	if err := os.MkdirAll(config.DataDir(), 0700); err != nil {
 		return err
 	}
 	return os.WriteFile(config.PIDPath(), []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644)
