@@ -175,7 +175,7 @@ func (t *TradeWS) connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
-	t.log.Printf("Trade WS: connected to %s", t.url)
+	t.log.Print("Trade WS: connected")
 
 	t.mu.Lock()
 	t.conn = conn
@@ -224,8 +224,7 @@ func (t *TradeWS) sendAuth(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
-	raw, _ := json.Marshal(msg)
-	t.log.Printf("Trade WS: sending auth: %s", raw)
+	t.log.Print("Trade WS: sending authentication")
 	return conn.WriteJSON(msg)
 }
 

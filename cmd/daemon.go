@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -70,17 +71,12 @@ func runDaemonStart(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Ensure data dir exists
-	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
-		return fmt.Errorf("creating data dir: %w", err)
-	}
-
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("finding executable: %w", err)
 	}
 
-	logFile, err := os.OpenFile(config.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := openDaemonLog(config.LogPath())
 	if err != nil {
 		return fmt.Errorf("opening log file: %w", err)
 	}
@@ -199,4 +195,23 @@ func runDaemonForeground(cmd *cobra.Command, args []string) error {
 	d := daemon.New(cfg, config.SocketPath())
 	ctx := context.Background()
 	return d.Run(ctx)
+}
+
+func openDaemonLog(path string) (*os.File, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }
