@@ -162,7 +162,11 @@ func (t *TradeWS) connect(ctx context.Context) error {
 	if t.cfg.HasJWT() {
 		httpHeaders["Authorization"] = []string{"Bearer " + t.cfg.AccessToken}
 	} else {
-		headers, err := auth.RESTHeaders(t.cfg.PublicKey, t.cfg.SecretKey)
+		request, err := http.NewRequest(http.MethodGet, t.url, nil)
+		if err != nil {
+			return fmt.Errorf("websocket request: %w", err)
+		}
+		headers, err := auth.RESTHeaders(t.cfg.PublicKey, t.cfg.SecretKey, request)
 		if err != nil {
 			return fmt.Errorf("auth headers: %w", err)
 		}
@@ -234,7 +238,11 @@ func (t *TradeWS) buildAuthMessage() (map[string]any, error) {
 	if t.cfg.HasJWT() {
 		params["jwt"] = t.cfg.AccessToken
 	} else {
-		creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey)
+		accountID := ""
+		if t.cfg.HasSelectedSubaccount() {
+			accountID = t.cfg.SelectedSubaccount
+		}
+		creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey, accountID)
 		if err != nil {
 			return nil, err
 		}

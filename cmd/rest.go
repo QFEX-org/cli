@@ -128,7 +128,8 @@ func setAuthHeaders(req *http.Request, includeRequestedAccount bool) {
 		setRequestedAccountHeader(req, includeRequestedAccount)
 		return
 	}
-	headers, err := auth.RESTHeaders(cfg.PublicKey, cfg.SecretKey)
+	setRequestedAccountHeader(req, includeRequestedAccount)
+	headers, err := auth.RESTHeaders(cfg.PublicKey, cfg.SecretKey, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating auth headers: %v\n", err)
 		os.Exit(1)
@@ -136,7 +137,6 @@ func setAuthHeaders(req *http.Request, includeRequestedAccount bool) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	setRequestedAccountHeader(req, includeRequestedAccount)
 }
 
 func setRequestedAccountHeader(req *http.Request, includeRequestedAccount bool) {

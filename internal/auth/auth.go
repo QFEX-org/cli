@@ -6,6 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,12 +21,12 @@ type HMACCredentials struct {
 }
 
 // NewHMACCredentials generates fresh HMAC credentials from a public/secret key pair.
-func NewHMACCredentials(publicKey, secretKey string) (*HMACCredentials, error) {
+func NewHMACCredentials(publicKey, secretKey, accountID string) (*HMACCredentials, error) {
 	nonceBytes := make([]byte, 16)
 	if _, err := rand.Read(nonceBytes); err != nil {
 		return nil, fmt.Errorf("generating nonce: %w", err)
 	}
-	nonce := hex.EncodeToString(nonceBytes)
+	nonce := hex.EncodeToString(nonceBytes) + "." + signedRequestDigest("WS_AUTH", "qfex-trade", "", nil, accountID)
 
 	ts := time.Now().Unix()
 	msg := fmt.Sprintf("%s:%d", nonce, ts)
@@ -41,13 +44,33 @@ func NewHMACCredentials(publicKey, secretKey string) (*HMACCredentials, error) {
 }
 
 // RESTHeaders returns the HTTP headers needed to authenticate a REST request.
-// The signature is HMAC-SHA256(secretKey, nonce + ":" + unix_ts).
-func RESTHeaders(publicKey, secretKey string) (map[string]string, error) {
+// The nonce binds method, authority, raw path/query, body and selected account.
+func RESTHeaders(publicKey, secretKey string, req *http.Request) (map[string]string, error) {
+	var body []byte
+	if req.Body != nil && req.Body != http.NoBody {
+		if req.GetBody == nil {
+			return nil, fmt.Errorf("request body cannot be replayed for signing")
+		}
+		reader, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		body, err = io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	authority := req.Host
+	if authority == "" {
+		authority = req.URL.Host
+	}
+
 	nonceBytes := make([]byte, 16)
 	if _, err := rand.Read(nonceBytes); err != nil {
 		return nil, fmt.Errorf("generating nonce: %w", err)
 	}
-	nonce := hex.EncodeToString(nonceBytes)
+	nonce := hex.EncodeToString(nonceBytes) + "." + signedRequestDigest(req.Method, authority, req.URL.RequestURI(), body, req.Header.Get("x-qfex-requested-account-id"))
 	ts := fmt.Sprintf("%d", time.Now().Unix())
 
 	msg := nonce + ":" + ts
@@ -61,4 +84,11 @@ func RESTHeaders(publicKey, secretKey string) (map[string]string, error) {
 		"x-qfex-nonce":          nonce,
 		"x-qfex-timestamp":      ts,
 	}, nil
+}
+
+func signedRequestDigest(method, authority, path string, body []byte, accountID string) string {
+	bodyHash := sha256.Sum256(body)
+	canonical := strings.Join([]string{"QFEX-HMAC-V1", strings.ToUpper(method), strings.ToLower(authority), path, hex.EncodeToString(bodyHash[:]), accountID}, "\n")
+	digest := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(digest[:])
 }
