@@ -238,7 +238,11 @@ func (t *TradeWS) buildAuthMessage() (map[string]any, error) {
 	if t.cfg.HasJWT() {
 		params["jwt"] = t.cfg.AccessToken
 	} else {
-		creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey, t.cfg.SelectedSubaccount)
+		accountID := ""
+		if t.cfg.HasSelectedSubaccount() {
+			accountID = t.cfg.SelectedSubaccount
+		}
+		creds, err := auth.NewHMACCredentials(t.cfg.PublicKey, t.cfg.SecretKey, accountID)
 		if err != nil {
 			return nil, err
 		}
